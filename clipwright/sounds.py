@@ -186,7 +186,12 @@ def credits(plans: Sequence[MixPlan], library: Sequence[Dict[str, Any]]) -> List
     return lines
 
 
-def detect_shot_changes(video: Path, keep_ranges: Sequence[Sequence[float]], threshold: float = SCENE_THRESHOLD) -> List[float]:
+def detect_shot_changes(
+    video: Path,
+    keep_ranges: Sequence[Sequence[float]],
+    threshold: float = SCENE_THRESHOLD,
+    offsets: Optional[Sequence[float]] = None,
+) -> List[float]:
     """Shot-change times in clip seconds, using ffmpeg's scene score over each kept range."""
     ranges = [(float(a), float(b)) for a, b in keep_ranges]
     found: List[float] = []
@@ -197,7 +202,7 @@ def detect_shot_changes(video: Path, keep_ranges: Sequence[Sequence[float]], thr
             capture_output=True, text=True, check=True,
         )
         for match in re.finditer(r"pts_time:([0-9.]+)", proc.stderr):
-            clip_time = to_clip_time(start + float(match.group(1)), ranges)
+            clip_time = to_clip_time(start + float(match.group(1)), ranges, offsets)
             if clip_time is not None and clip_time > 0:
                 found.append(clip_time)
     return sorted(found)

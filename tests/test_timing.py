@@ -25,6 +25,12 @@ class ToClipTimeTest(unittest.TestCase):
     def test_time_in_cut_returns_none(self):
         self.assertIsNone(to_clip_time(15.0, [(10.0, 12.0), (20.0, 25.0)]))
 
+    def test_offsets_replace_cumulative_sum_for_crossfaded_ranges(self):
+        # a 0.2 s crossfade pulls the second range 0.2 s earlier than plain concatenation
+        ranges = [(10.0, 12.0), (20.0, 25.0)]
+        self.assertAlmostEqual(to_clip_time(21.0, ranges, offsets=[0.0, 1.8]), 2.8)
+        self.assertAlmostEqual(to_clip_time(11.0, ranges, offsets=[0.0, 1.8]), 1.0)
+
 
 class MatchKeyWordsTest(unittest.TestCase):
     def test_match_is_case_and_punctuation_insensitive(self):
@@ -48,6 +54,11 @@ class MatchKeyWordsTest(unittest.TestCase):
         ranges = [(10.0, 12.0), (20.0, 25.0)]
         matches, _ = match_key_words(WORDS, ["iron core"], ranges)
         self.assertAlmostEqual(matches[0][0], 2.0)
+
+    def test_match_uses_offsets(self):
+        ranges = [(10.0, 12.0), (20.0, 25.0)]
+        matches, _ = match_key_words(WORDS, ["iron core"], ranges, offsets=[0.0, 1.8])
+        self.assertAlmostEqual(matches[0][0], 1.8)
 
     def test_words_in_a_cut_do_not_match(self):
         matches, unmatched = match_key_words(WORDS, ["iron"], [(10.0, 12.0)])

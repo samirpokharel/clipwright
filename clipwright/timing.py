@@ -6,13 +6,21 @@ from typing import Any, Dict, List, Optional, Sequence, Tuple
 Range = Tuple[float, float]
 
 
-def to_clip_time(t: float, keep_ranges: Sequence[Range]) -> Optional[float]:
-    """Map a source time (seconds) to clip time, or None if it falls in a cut."""
-    offset = 0.0
-    for start, end in keep_ranges:
+def to_clip_time(
+    t: float, keep_ranges: Sequence[Range], offsets: Optional[Sequence[float]] = None
+) -> Optional[float]:
+    """Map a source time (seconds) to clip time, or None if it falls in a cut.
+
+    ``offsets`` gives where each kept range starts on the rendered clip, as SupoClip's
+    ``output_offsets_for_ranges`` returns it (crossfades pull later ranges earlier).
+    Without it, ranges are assumed to be concatenated back to back.
+    """
+    cursor = 0.0
+    for index, (start, end) in enumerate(keep_ranges):
         if start <= t <= end:
-            return offset + (t - start)
-        offset += end - start
+            base = offsets[index] if offsets is not None else cursor
+            return base + (t - start)
+        cursor += end - start
     return None
 
 
@@ -24,6 +32,7 @@ def match_key_words(
     words: Sequence[Dict[str, Any]],
     key_words: Sequence[str],
     keep_ranges: Sequence[Range],
+    offsets: Optional[Sequence[float]] = None,
 ) -> Tuple[List[Tuple[float, str]], List[str]]:
     """Find the first spoken occurrence of each key word or phrase inside the kept ranges.
 
@@ -33,7 +42,7 @@ def match_key_words(
     """
     spoken = []
     for word in words:
-        clip_time = to_clip_time(word["start"] / 1000.0, keep_ranges)
+        clip_time = to_clip_time(word["start"] / 1000.0, keep_ranges, offsets)
         token = _norm(word.get("text", ""))
         if clip_time is not None and token:
             spoken.append((token, clip_time))
