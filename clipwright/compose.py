@@ -19,6 +19,13 @@ TITLE_SIDE_MARGIN = 60
 TITLE_START = 0.1
 TITLE_END_MARGIN = 0.3
 TITLE_MIN_SECONDS = 0.5
+SPEAKER_Y = 0.015        # fraction of height, above the title block
+SPEAKER_SECONDS = 6.0
+SPEAKER_PX = 34
+COMMENTARY_PX = 40
+COMMENTARY_SECONDS = 5.0
+COMMENTARY_MIN_SECONDS = 1.0
+DISCLAIMER_PX = 28
 CHAR_WIDTH_EM = 0.46     # average Anton glyph width as a fraction of the font size
 
 # Music ducking while speech is present. Tuned by ear and by the container test.
@@ -89,6 +96,13 @@ def _balance(words: Sequence[str], lines: int) -> List[str]:
     return out
 
 
+def title_window(title: Dict[str, Any], duration: float) -> Tuple[float, float]:
+    """Start and end second of the brand title block."""
+    if duration <= 0.8:
+        return 0.0, duration
+    return TITLE_START, min(float(title["seconds"]), max(TITLE_MIN_SECONDS, duration - TITLE_END_MARGIN))
+
+
 def title_ass(text: str, style: Dict[str, Any], duration: float, font_name: str,
               width: int = WIDTH, height: int = HEIGHT) -> str:
     """ASS document with the brand title block (opaque tilted box) and the handle."""
@@ -125,11 +139,7 @@ def title_ass(text: str, style: Dict[str, Any], duration: float, font_name: str,
     )
     events: List[str] = []
     if lines:
-        if duration <= 0.8:
-            start, end = 0.0, duration
-        else:
-            start = TITLE_START
-            end = min(float(title["seconds"]), max(TITLE_MIN_SECONDS, duration - TITLE_END_MARGIN))
+        start, end = title_window(title, duration)
         span = max(0.001, end - start)
         fade_in, fade_out = round(min(0.15, span / 3) * 1000), round(min(0.25, span / 3) * 1000)
         tilt = title["tilt_degrees"]
@@ -141,6 +151,67 @@ def title_ass(text: str, style: Dict[str, Any], duration: float, font_name: str,
     events.append(
         f"Dialogue: 2,{ass_time(0)},{ass_time(duration)},Handle,,0,0,0,,"
         f"{{\\an1\\pos({HANDLE_X},{round(height * HANDLE_Y)})\\alpha&H30&}}{_escape(ident['handle'])}"
+    )
+    return header + "\n".join(events) + "\n"
+
+
+def overlay_ass(style: Dict[str, Any], duration: float, font_name: str, overlays: Dict[str, str],
+                width: int = WIDTH, height: int = HEIGHT) -> Optional[str]:
+    """ASS document with the domain overlays, or None when there is nothing to draw.
+
+    ``overlays`` may hold ``speaker`` (top left, first seconds), ``commentary`` (a card in the title
+    slot, from when the title ends) and ``disclaimer`` (on the handle's row, right aligned, whole clip).
+    """
+    ident, title = style["identity"], style["title"]
+    base_text, outline = ass_color(ident["text"]), ass_color(ident["outline"])
+    events: List[str] = []
+
+    speaker = (overlays.get("speaker") or "").strip()
+    if speaker:
+        end = min(SPEAKER_SECONDS, duration)
+        fade = round(min(0.15, end / 3) * 1000), round(min(0.25, end / 3) * 1000)
+        events.append(
+            f"Dialogue: 3,{ass_time(0)},{ass_time(end)},Speaker,,0,0,0,,"
+            f"{{\\an7\\pos({TITLE_SIDE_MARGIN},{round(height * SPEAKER_Y)})\\fad({fade[0]},{fade[1]})}}{_escape(speaker)}"
+        )
+
+    commentary = (overlays.get("commentary") or "").strip()
+    if commentary:
+        start = title_window(title, duration)[1] if title["enabled"] else TITLE_START
+        end = min(start + COMMENTARY_SECONDS, duration - 0.2)
+        if end - start >= COMMENTARY_MIN_SECONDS:
+            words = _escape(commentary).split()
+            per_line = max(8, int((width - 2 * TITLE_SIDE_MARGIN) / (COMMENTARY_PX * CHAR_WIDTH_EM)))
+            lines = _balance(words, min(3, max(1, math.ceil(len(" ".join(words)) / per_line))))
+            events.append(
+                f"Dialogue: 1,{ass_time(start)},{ass_time(end)},Commentary,,0,0,0,,"
+                f"{{\\an7\\pos({TITLE_SIDE_MARGIN},{round(height * title['top'])})\\fad(200,250)}}" + "\\N".join(lines)
+            )
+
+    disclaimer = (overlays.get("disclaimer") or "").strip()
+    if disclaimer:
+        events.append(
+            f"Dialogue: 2,{ass_time(0)},{ass_time(duration)},Disclaimer,,0,0,0,,"
+            f"{{\\an3\\pos({width - HANDLE_X},{round(height * HANDLE_Y)})\\alpha&H30&}}{_escape(disclaimer)}"
+        )
+    if not events:
+        return None
+
+    pad = max(8, COMMENTARY_PX // 4)
+    header = (
+        "[Script Info]\nScriptType: v4.00+\n"
+        f"PlayResX: {width}\nPlayResY: {height}\nWrapStyle: 2\nScaledBorderAndShadow: yes\n\n"
+        "[V4+ Styles]\n"
+        "Format: Name,Fontname,Fontsize,PrimaryColour,SecondaryColour,OutlineColour,BackColour,Bold,Italic,"
+        "Underline,StrikeOut,ScaleX,ScaleY,Spacing,Angle,BorderStyle,Outline,Shadow,Alignment,MarginL,"
+        "MarginR,MarginV,Encoding\n"
+        f"Style: Speaker,{font_name},{SPEAKER_PX},{base_text},&H000000FF,{outline},&H00000000,"
+        f"0,0,0,0,100,100,0,0,1,2,0,7,{TITLE_SIDE_MARGIN},{TITLE_SIDE_MARGIN},0,1\n"
+        f"Style: Commentary,{font_name},{COMMENTARY_PX},{base_text},&H000000FF,&H59000000,&H59000000,"
+        f"0,0,0,0,100,100,0,0,3,{pad},0,7,{TITLE_SIDE_MARGIN},{TITLE_SIDE_MARGIN},0,1\n"
+        f"Style: Disclaimer,{font_name},{DISCLAIMER_PX},{base_text},&H000000FF,{outline},&H00000000,"
+        f"0,0,0,0,100,100,0,0,1,2,0,3,{HANDLE_X},{HANDLE_X},40,1\n\n"
+        "[Events]\nFormat: Layer,Start,End,Style,Name,MarginL,MarginR,MarginV,Effect,Text\n"
     )
     return header + "\n".join(events) + "\n"
 
@@ -313,7 +384,8 @@ def build_caption_ass(entry: Dict[str, Any], style: Dict[str, Any], workdir: Pat
 
 
 def compose_clip(entry: Dict[str, Any], style: Dict[str, Any], mix: sounds.MixPlan, out: Path,
-                 workdir: Path, sounds_dir: Path, *, voice: bool = True, captions: bool = True) -> None:
+                 workdir: Path, sounds_dir: Path, *, voice: bool = True, captions: bool = True,
+                 overlays: Optional[Dict[str, str]] = None) -> None:
     """Render one clip's pass 2. Raises RuntimeError with ffmpeg's last lines on failure."""
     from src.media.captions import ass_font_name, ass_fonts_dir
 
@@ -333,6 +405,12 @@ def compose_clip(entry: Dict[str, Any], style: Dict[str, Any], mix: sounds.MixPl
     title_file.write_text(title_ass(entry.get("hook_title") or "", style, duration,
                                     ass_font_name(ident["headline_font"]), width, height), encoding="utf-8")
     ass_files.append(title_file)
+
+    overlay_text = overlay_ass(style, duration, ass_font_name(ident["headline_font"]), overlays or {}, width, height)
+    if overlay_text:
+        overlay_file = workdir / f"{pass1.stem}.overlay.ass"
+        overlay_file.write_text(overlay_text, encoding="utf-8")
+        ass_files.append(overlay_file)
 
     fonts_dir = ass_fonts_dir(ident["headline_font"])
     args = build_ffmpeg_args(pass1, out, ass_files, style, mix, duration,
