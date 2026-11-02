@@ -74,7 +74,7 @@ A 16:9 source in a 9:16 video is either **filled** (a full-height portrait crop 
 Per clip, as each sound's level (`off`, `low`, `normal`) allows: a music bed that ducks under speech, a whoosh on shot changes (at most one per 4 s), pops on key words (at most 3), an intro sting and an outro tone. The final mix is normalised to about -14 LUFS (measured -14.4 to -15.4 on 7 clips) with a -3 dB true-peak ceiling, so encoded peaks stay below -2 dBFS.
 
 - **Built in:** whoosh, pop, sting and outro are synthesized by ffmpeg, so they carry no licence. A placeholder ambient pad is the music bed until you add tracks. It is not good music.
-- **Your own files:** `clip sounds add --file <path> --kind music --license own` (or `CC0`, or `CC-BY --author NAME`).
+- **Your own files:** `clip sounds add --file <path> --kind music --license own` (or `CC0`, or `CC-BY --author NAME`). A licence is required, and the path must be inside this folder (the container sees it as `/work/...`). Adding a name that already exists is refused.
 - **Freesound:** `clip sounds add <url-or-id> --kind <kind>` with `FREESOUND_API_KEY` set. Only CC0 and CC-BY are accepted, and a refused licence writes nothing. The Freesound field names are from their public docs and have not been checked against a live response. Freesound's API terms say commercial use of the API is negotiated with them, so use it for occasional curation and read [their terms](https://freesound.org/help/tos_api).
 - **Credits:** CC-BY authors used in any clip are written to `out/<id>/credits.txt`. Paste them into the post description.
 
@@ -98,21 +98,28 @@ Stage 1 render, one 18 second clip:
 | `--recompose` (pass 2 only) | 34.5 s |
 | `brand-preview` (3 second sample) | 19 s |
 
+Stage 2 layout render (pass 1 through pass 2 together, so the whole clip):
+
+| Job | Output | Time |
+|---|---|---|
+| Three Drumeo clips with fill ranges | 131 s | 297 s |
+| One 18 s clip, whole-clip fill | 18 s | 50 s |
+
 Cost: no API fees. It uses your Claude Code usage for the selection step only.
 
 ## Tests
 ```bash
-python3 -m unittest discover -s tests -t .   # host: style, timing, sounds, compose arguments, CLI, ducking
-bash tests/container.sh                       # in the image: real pass 1 then pass 2 on the cached test job
+python3 -m unittest discover -s tests -t .   # host: style, timing, sounds, layout, compose arguments, CLI, ducking
+bash tests/container.sh                       # in the image: real pass 1 then pass 2, key-phrase highlights, multi-range timing, fill/fit layouts
 ```
-The container test needs the cached job `jNQXAC9IVRw` (fetch `https://www.youtube.com/watch?v=jNQXAC9IVRw` once).
+The container tests need two cached jobs: `jNQXAC9IVRw` (render tests) and `aMoVyJ9_M24` (layout tests). Fetch each once with `clip fetch https://www.youtube.com/watch?v=<id>`.
 
 ## Limits
-- CPU Whisper is the bottleneck. A one-hour video can take over an hour to transcribe.
+- CPU Whisper is the bottleneck. A one-hour video can take over an hour to transcribe. A benchmark of faster-whisper (`small`, int8, same CPU) transcribed the same 5 minute audio in 161 s (2.0x real time) against 298 s (0.9x) for openai-whisper, with the same word count (1152 against 1151). It is measured but not wired in. A Google Colab GPU would likely be faster still; that is not measured here, and it would send the audio to Google, so it is not for client or office material.
 - Whisper misspells names, and the captions copy the transcript spelling.
 - No editor and no accounts. To change a clip, edit `segments.json` and run `clip render --recompose`.
 - The transcript text and extracted frames go to Claude through your Claude Code session.
-- Only tested on YouTube sources. Local files, Twitch and Kick are untested.
+- Only tested on YouTube sources. Local files, Twitch and Kick are untested. Local file names are cleaned to letters, digits, `_` and `-` for the job id.
 - Loudness (-14 LUFS) and the bottom safe zone (15%) are common short-form practice, not checked against each platform's current guidance.
 
 ## Legal

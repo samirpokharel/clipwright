@@ -1,5 +1,7 @@
 # Clipwright Stage 1: Brand Pack, Sound and Per-Video Style Implementation Plan
 
+> **Status: executed 2026-11-02 and merged.** This is the plan as written. Where the build differed, the spec (sections 5 to 12) and the commit history are the record. Known differences: true-peak ceiling is -3 dB (not -1.5), the handle sits at 0.84 of frame height, there is no `duck_db`, the `--caption-template` flag was removed, and the package is found through `PYTHONPATH=/work` (no `/app/clipwright` mount).
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Add a second render pass to Clipwright that applies a brand look, key-word captions and a mixed soundtrack, with style chosen per video through profiles and per-clip overrides.
@@ -18,7 +20,7 @@
 - Locked identity fields (`handle`, `accent`, `text`, `outline`, `headline_font`, `title.text_color`) never change via profile or clip style unless `--allow-brand-override`.
 - A style value out of bounds, an unknown field, or an unknown profile is an error naming segment and field. Nothing is clamped. No clip renders until every segment validates.
 - Licences accepted by tooling: `none`, `CC0`, `CC-BY`, `own`. Freesound sounds only CC0 and CC-BY.
-- Loudness target -14 LUFS, true peak -1.5 dB. Whoosh at most one per 4 s, pops at most 3 per clip, shot-change threshold 0.35.
+- Loudness target -14 LUFS, true peak -1.5 dB (superseded: built with -3 dB, see spec 6.3). Whoosh at most one per 4 s, pops at most 3 per clip, shot-change threshold 0.35.
 - Python via `uv` for any script needing dependencies. Tests are stdlib `unittest`.
 - Em dashes are not used in docs or page text.
 
@@ -154,7 +156,7 @@ Each line has its test in the owning task below (marked **RF1** to **RF5**).
 - [ ] **Step 1: Spec fix.** Remove `duck_db` from the `brand.json` example and the `mix` description, state that ducking constants live in `compose.py`, and move the handle to 0.84 of frame height in sections 5.3 and 5.5.
 - [ ] **Step 2: Skill.** Add to `skill/SKILL.md`: how to read `state.json` metadata, the profile-selection guidance (spec 4.4 table and the examples: commentary gets `explainer`, music gets `performance` with `source_music` when lyrics appear), how to write `key_words` and `style`, running `clip schema` and `clip profiles`, and the preview-and-recompose loop. Then regenerate the installed copy with the `sed` line from `setup.sh`.
 - [ ] **Step 3: README.** Add sections on `brand.json`, profiles, per-clip styles, the sounds library and licences, and the new commands. Commit the earlier uncommitted `--only` work with it.
-- [ ] **Step 4: Verify** `grep -c "—" README.md skill/SKILL.md docs/superpowers/specs/*.md` prints 0 for each, then **Commit** `docs: brand, profiles, sounds, skill guidance`.
+- [ ] **Step 4: Verify** that no em dash (U+2014) remains in `README.md`, `skill/SKILL.md` or the spec (a `grep -c` for that character prints 0 for each), then **Commit** `docs: brand, profiles, sounds, skill guidance`.
 
 ### Task 8: Run all three cached videos
 

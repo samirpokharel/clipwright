@@ -54,12 +54,13 @@ Pass 1 uses SupoClip exactly as today for cutting, sentence snapping and framing
 | Compose | `compose.py` | Build the ASS file and the ffmpeg command for pass 2 | brand, sounds plan, SupoClip caption builder |
 | Sounds | `sounds.py` | Library lookup, synthesis, mix plan, credits | `sounds/library.json`, ffmpeg |
 | Freesound helper | `freesound.py` | Check licence and fetch one sound into the library | Freesound API, `FREESOUND_API_KEY` |
-| CLI | `clip.py` | Wire the steps, flags, caching | all of the above |
+| Layout | `clipwright/layout.py`, `clipwright/render_layout.py` | Plan fill/fit runs, snap them to shot changes, and render clips whose layout is not `auto` (section 12) | style, SupoClip face tracker |
+| CLI | `clip.py`, `clipwright/pipeline.py` | Wire the steps, flags, caching, pass-2 loop | all of the above |
 
 Each unit has one purpose, can be tested alone, and talks to the others through plain data (JSON files and dicts).
 
 ### 3.3 Where code runs
-All of `clip.py` and its modules run inside the `supoclip-backend` container, as today. The new modules live in a `clipwright/` package next to `clip.py`. Both are bind-mounted (the package at `/app/clipwright`), so no image rebuild is needed. Modules import SupoClip code lazily, inside functions, so the pure-logic tests run on the host with plain `python3 -m unittest`.
+All of `clip.py` and its modules run inside the `supoclip-backend` container, as today. The `clip` wrapper mounts this folder at `/work` and `clip.py` read-only at `/app/clip.py`, and sets `PYTHONPATH=/work`, so the `clipwright/` package imports with no image rebuild. The modules import SupoClip code lazily, inside functions, so the pure-logic tests run on the host with plain `python3 -m unittest`.
 
 ## 4. Data formats
 
