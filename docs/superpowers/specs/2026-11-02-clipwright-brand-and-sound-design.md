@@ -27,6 +27,7 @@ An editor, auto-posting, music generation, voice changes, and any change to fram
 | Sound | All four: music bed under speech, transition whooshes, pops on emphasis words, intro and outro sting. |
 | Build approach | Two stages, no fork. Stage 1 is a second pass on top of SupoClip's renderer. |
 | Sound sources | Synthesized effects (no licence), Freesound CC0 and CC-BY (curated once), owner-supplied files. |
+| Per-video style | Three layers: brand identity (fixed), profiles by video type, per-clip overrides written by Claude Code. The interface is validated JSON plus commands, not an MCP server. Added 2026-11-02. |
 
 Snapshots of the mockup screens that led to these choices are on the local review page `http://127.0.0.1:8765/personal/clipwright/2026-11-02-supoclip-upgrade-brainstorm.html`.
 
@@ -49,7 +50,7 @@ Pass 1 uses SupoClip exactly as today for cutting, sentence snapping and framing
 
 | Unit | File | Purpose | Depends on |
 |---|---|---|---|
-| Brand config | `brand.json`, `brand.py` | Load and validate brand values | none |
+| Style | `brand.json`, `profiles/*.json`, `clipwright/style.py` | Load, merge (brand, profile, clip override), validate and describe the style | none |
 | Compose | `compose.py` | Build the ASS file and the ffmpeg command for pass 2 | brand, sounds plan, SupoClip caption builder |
 | Sounds | `sounds.py` | Library lookup, synthesis, mix plan, credits | `sounds/library.json`, ffmpeg |
 | Freesound helper | `freesound.py` | Check licence and fetch one sound into the library | Freesound API, `FREESOUND_API_KEY` |
@@ -58,11 +59,13 @@ Pass 1 uses SupoClip exactly as today for cutting, sentence snapping and framing
 Each unit has one purpose, can be tested alone, and talks to the others through plain data (JSON files and dicts).
 
 ### 3.3 Where code runs
-All of `clip.py` and its modules run inside the `supoclip-backend` container, as today. `clip.py` and the new modules are bind-mounted, so no image rebuild is needed. Pure-logic tests may also run on the host.
+All of `clip.py` and its modules run inside the `supoclip-backend` container, as today. The new modules live in a `clipwright/` package next to `clip.py`. Both are bind-mounted (the package at `/app/clipwright`), so no image rebuild is needed. Modules import SupoClip code lazily, inside functions, so the pure-logic tests run on the host with plain `python3 -m unittest`.
 
 ## 4. Data formats
 
 ### 4.1 `brand.json`
+
+`brand.json` holds the channel identity and the base style. Profiles and per-clip overrides (4.4) change the base style, never the identity.
 
 ```json
 {
@@ -71,22 +74,24 @@ All of `clip.py` and its modules run inside the `supoclip-backend` container, as
   "text": "#FFFFFF",
   "outline": "#000000",
   "headline_font": "Anton-Regular",
-  "caption": {"uppercase": true, "max_words_per_line": 3, "position_y": 0.75, "outline_px": 3},
-  "title": {"seconds": 4, "max_lines": 2, "tilt_degrees": -2, "top": 0.05, "text_color": "#111111"},
-  "progress_bar": {"height_px": 5, "track_alpha": 0.25},
-  "sound": {"music": true, "whoosh": true, "pop": true, "sting": true,
-            "music_db": -20, "whoosh_db": -18, "pop_db": -22, "sting_db": -16, "duck_db": -10,
-            "target_lufs": -14}
+  "base": {
+    "caption": {"size": "medium", "words_per_line": 3, "uppercase": true, "position_y": 0.75, "outline_px": 3},
+    "title": {"enabled": true, "seconds": 4, "size": "medium", "max_lines": 2, "tilt_degrees": -2, "top": 0.05, "text_color": "#111111"},
+    "progress_bar": {"enabled": true, "height_px": 5, "track_alpha": 0.25},
+    "sound": {"music": "low", "whoosh": "normal", "pop": "normal", "sting": "normal"}
+  },
+  "mix": {"music_db": -20, "whoosh_db": -18, "pop_db": -22, "sting_db": -16, "duck_db": -10, "low_offset_db": -6, "target_lufs": -14}
 }
 ```
 
 Fonts come from the image's `fonts/` folder (24 bundled). Validation rejects unknown keys, bad hex colours, missing fonts, and out-of-range values. Each error names the field.
 
 ### 4.2 `segments.json` additions
-Two optional fields per segment, ignored by older tools:
+Three optional fields per segment, ignored by older tools (`style` is described in 4.4):
 
 - `"key_words": ["powerful", "iron core"]`: 2 to 4 words or short phrases that are spoken in the segment. Matched case-insensitively against the word timings.
 - `"source_music": true`: the source already has music under the speech. The music bed is skipped for this clip.
+- `"style": {...}`: a profile name and bounded overrides for this clip. See 4.4.
 
 If `key_words` is absent, SupoClip's automatic emphasis is used. If a key word is not found in the spoken words, compose logs a warning naming it and continues.
 
@@ -102,9 +107,59 @@ Not verified: whether the caption builder's `highlight_words` matches multi-word
   "url": "https://freesound.org/s/123456/", "attribution": "Title by username (CC BY)"}]
 ```
 
-`kind` is one of `music`, `whoosh`, `pop`, `sting`, `outro`. `license` is one of `none`, `CC0`, `CC-BY`, `own`. Any other value fails validation. Files live under `sounds/` and are git-ignored. Only `library.json` is committed, and only as an empty list `[]` template.
+`kind` is one of `music`, `whoosh`, `pop`, `sting`, `outro`. `license` is one of `none`, `CC0`, `CC-BY`, `own`. Any other value fails validation. Files live under `sounds/` and are git-ignored. Only `library.json` is committed, and only as an empty list `[]` template. It holds only entries the owner adds. The synthesized sounds (6.1) are defined in code, generated into `sounds/synth/` on first use, and merged with the library at run time.
 
-### 4.4 Pass 1 cache
+### 4.4 Profiles and per-clip style
+
+The style of one clip is resolved in three layers, later layers winning, by a deep merge:
+
+1. **Base:** `brand.json` `base` and `mix`.
+2. **Profile:** `profiles/<name>.json`, a partial style chosen by video type.
+3. **Clip override:** the segment's `style` block, written by Claude Code.
+
+Result: one fully specified style per clip, validated against the bounds below. Any value outside its bound is an error, never silently clamped.
+
+```json
+"style": {
+  "profile": "explainer",
+  "caption": {"size": "large", "words_per_line": 3},
+  "title": {"seconds": 3},
+  "sound": {"music": "off", "pop": "normal"}
+}
+```
+
+| Field | Allowed values |
+|---|---|
+| `caption.size` | `small`, `medium`, `large` (font scale 0.8, 1.0, 1.25) |
+| `caption.words_per_line` | integer 1 to 6 |
+| `caption.uppercase` | true or false |
+| `caption.position_y` | 0.55 to 0.80 (fraction of frame height) |
+| `caption.outline_px` | integer 0 to 6 |
+| `title.enabled`, `progress_bar.enabled` | true or false |
+| `title.seconds` | 1 to 8 |
+| `title.size` | `small`, `medium`, `large` |
+| `title.max_lines` | 1 to 3 |
+| `title.tilt_degrees` | -5 to 5 |
+| `title.top` | 0.03 to 0.12 |
+| `progress_bar.height_px` | integer 2 to 10 |
+| `sound.music`, `sound.whoosh`, `sound.pop`, `sound.sting` | `off`, `low`, `normal` |
+
+`low` plays at `low_offset_db` below `normal`. `off` disables that sound. A `source_music: true` segment forces `sound.music` to `off`.
+
+**Locked identity.** `handle`, `accent`, `text`, `outline`, `headline_font` and `title.text_color` cannot appear in a profile or a clip `style`. They fail validation. A run flag `--allow-brand-override` lifts this for one run.
+
+**Starter profiles**, chosen by video type:
+
+| Profile | Fits | Caption | Title | Sound |
+|---|---|---|---|---|
+| `explainer` | Commentary, news, diagrams | 3 words per line, medium | 4 s | music low, whoosh normal, pop normal, sting normal |
+| `performance` | Music, drumming, live shows | 3 words per line, medium | 5 s, large | music off, whoosh low, pop off, sting low |
+| `interview` | Podcasts, conversations | 5 words per line, medium, sentence case | 3 s | music low, whoosh off, pop off, sting low |
+| `tutorial` | How-to, lessons | 3 words per line, large | 4 s | music off, whoosh low, pop low, sting normal |
+
+**Discovery.** `clip schema` prints the fields and bounds above as JSON, and `clip profiles` lists each profile with its resolved values. Claude Code reads these instead of relying on memory. The `supoclip` skill carries guidance for choosing a profile and for typical adjustments, and states that Claude chooses from the title, channel, description and transcript.
+
+### 4.5 Pass 1 cache
 `jobs/<id>/pass1/NN.mp4` and `jobs/<id>/pass1/manifest.json`, holding per clip: the pass-1 path, `keep_ranges` (source seconds, as returned in SupoClip's clip info), the source video path, duration, and the segment's hook title and key words. `--recompose` reads this and skips pass 1.
 
 ## 5. Pass 2: compose
@@ -114,7 +169,7 @@ The pass-1 clip, its `keep_ranges`, the word timings cached beside the source vi
 
 ### 5.2 Captions
 Call SupoClip's `build_assemblyai_ass_subtitles` (in `media/captions.py`) with:
-`keep_ranges` from the pass-1 manifest (this maps source word times onto the cut clip), `template_override` set to a template dict derived from `brand.json`, `highlight_words` set to the segment's `key_words`, `hook_title=None`, and 1080 by 1920 output. No SupoClip file is edited.
+`keep_ranges` from the pass-1 manifest (this maps source word times onto the cut clip), `template_override` set to a template dict derived from the clip's resolved style (4.4) and the brand identity, `highlight_words` set to the segment's `key_words`, `hook_title=None`, and 1080 by 1920 output. No SupoClip file is edited.
 
 ### 5.3 Brand title, handle, progress bar
 - **Title block.** A second ASS file (or a second event set) drawn by `compose.py`: accent-coloured opaque box, headline font, tilted by `tilt_degrees`, at `top`, for `seconds`, with at most `max_lines` lines. If libass cannot render the tilted box faithfully, the fallback is SupoClip's `hook_editor_style` on the built-in title. Choosing between them is the first task of the plan.
@@ -137,6 +192,8 @@ Generated once into `sounds/fx/` on first use by ffmpeg `lavfi` recipes in `soun
 - **sting (intro):** about 0.6 s rising tone ending in a soft low hit.
 - **outro:** about 0.6 s soft falling tone.
 
+- **pad (placeholder music):** a 30 s looping ambient pad (layered sines with a slow tremolo) so the music bed and ducking work before the owner adds real tracks. It is a placeholder, not good music.
+
 Because they are generated, they carry no licence and are not committed.
 
 ### 6.2 Freesound helper
@@ -154,7 +211,7 @@ Freesound's API terms say commercial use of the API is negotiated case by case. 
 `clip sounds add --file <path> --kind <kind> --license <own|CC0|CC-BY> [--author ...]` records an owner-supplied file. `clip sounds list` prints the library.
 
 ### 6.3 Mix plan
-`sounds.py` returns, per clip, a list of `(file, start_seconds, gain_db)` events plus a music decision.
+`sounds.py` returns, per clip, a list of `(file, start_seconds, gain_db)` events plus a music decision. A sound's gain is its `mix.<kind>_db` value for `normal`, that value plus `mix.low_offset_db` for `low`, and the sound is absent for `off`. The `<kind>_db` names in the table below stand for these resolved gains.
 
 | Sound | Event time (clip seconds) | Rule | Gain |
 |---|---|---|---|
@@ -178,8 +235,12 @@ After rendering, write `out/<id>/credits.txt` with one line per CC-BY sound used
 ## 7. CLI
 
 ```
-clip fetch <url|file>                       unchanged
+clip fetch <url|file>                       unchanged, and also saves title, channel, description,
+                                            categories and tags to jobs/<id>/state.json when available
+clip schema                                 print the style fields and bounds as JSON
+clip profiles                               list profiles with their resolved values
 clip render <job> <segments.json>           pass 1 then pass 2
+      --allow-brand-override                allow identity fields in profiles or clip styles
       --recompose                           reuse pass 1, redo pass 2 only
       --only N [N ...]                      unchanged
       --no-music --no-whoosh --no-pop --no-sting   override brand.json for this run
@@ -197,10 +258,11 @@ clip sounds add|list                        see 6.2
 - An unmatched key word logs a warning and continues.
 - If pass 2 fails for a clip, the pass-1 file is kept and the error includes the last lines of ffmpeg's stderr. Other clips continue.
 - A refused Freesound licence stops that `sounds add` call with a message and changes nothing.
+- A style value outside its bound, an unknown field, an unknown profile, or a locked identity field in a profile or clip style is an error naming the segment number and the field. Nothing is clamped. No clip renders until every segment's style is valid.
 
 ## 9. Testing
 
-**Host, pure logic (no ffmpeg, no container):** brand validation, key-word matching against word timings, `keep_ranges` time mapping, mix-plan arithmetic including the per-4-seconds whoosh limit and the 3-pop limit, the licence allowlist, and library validation.
+**Host, pure logic (no ffmpeg, no container):** style merging (brand, profile, clip override) including deep merge and the identity lock, bound checks for every field in 4.4, schema output, profile resolution, brand validation, key-word matching against word timings, `keep_ranges` time mapping, mix-plan arithmetic including the per-4-seconds whoosh limit and the 3-pop limit, the licence allowlist, and library validation.
 
 **Container, ffmpeg:** render a fixed 5-second sample from a small fixture with a fixed `brand.json`, then assert:
 
@@ -220,7 +282,9 @@ The existing manual flow (render a real clip, extract frames, look at them) stay
 4. `brand-preview` finishes in under 15 seconds. (Estimate, to be measured.)
 5. All tests in section 9 pass.
 6. No SupoClip file is modified.
-7. `README.md` documents `brand.json`, the sounds library, licensing, and the new flags.
+7. `README.md` documents `brand.json`, profiles and clip styles, the sounds library, licensing, and the new flags.
+8. Two clips from different video types (for example commentary and music) render with visibly different resolved styles chosen through profiles, with identity unchanged.
+9. An invalid `style` block stops the run with an error naming the segment and field.
 
 ## 11. Risks and open questions
 
@@ -233,6 +297,8 @@ The existing manual flow (render a real clip, extract frames, look at them) stay
 | Freesound API terms may not cover the owner's use. | Helper is for occasional curation. Owner reads the terms. Manual downloads and own files are alternatives. |
 | `source_music` is a manual flag set by Claude from the transcript. | Documented. Wrong flags are fixed by editing `segments.json` and using `--recompose`. |
 | Loudness target and safe-zone margins are unverified per platform. | Both live in `brand.json` or constants, easy to change. |
+| Choosing a profile depends on Claude's judgement of the video type, from metadata that yt-dlp may not return for every source. | Metadata is saved when available. Claude falls back to the transcript and says which profile it chose. Wrong picks are fixed by editing `style` and using `--recompose`. |
+| Bounds on style fields may be too tight or too loose in practice. | Bounds live in one table in `style.py` and the schema output, so they change in one place. |
 | Music from the owner's own library is the owner's licensing responsibility. | `sounds add --file` requires a licence value and records it. |
 
 Open question, deferred to stage 2: whether a slow push-in belongs in pass 2 (possible with an ffmpeg zoom on the framed video) or in layout code.
