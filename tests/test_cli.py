@@ -74,6 +74,11 @@ class ParserTest(unittest.TestCase):
         with self.assertRaises(SystemExit):
             pipeline.build_parser().parse_args(["sources"])
 
+    def test_package_command_parses(self):
+        a = pipeline.build_parser().parse_args(["package", "job1", "--segments", "s.json"])
+        self.assertEqual((a.cmd, a.job, a.segments), ("package", "job1", "s.json"))
+        self.assertIsNone(pipeline.build_parser().parse_args(["package", "job1"]).segments)
+
     def test_frames_command_parses(self):
         p = pipeline.build_parser()
         a = p.parse_args(["frames", "job1", "--segment", "2", "--every", "2"])

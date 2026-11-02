@@ -6,6 +6,7 @@ Runs inside the supoclip-backend image, driven by ./clip. See README.md and `cli
     clip check <url> [<url> ...]     licence and title of candidate videos, no download
     clip render <job> segments.json  pass 1 (SupoClip cut and frame) then pass 2 (brand + sound)
     clip domains                     content domains (tech, health, mythology) and their gates
+    clip package <job>               upload package per clip: title, description, hashtags, cover images
     clip sources <domain>            find candidate videos for a domain (licence flag, ranked), no download
     clip schema | profiles           what style fields and presets exist
     clip brand-preview <job>         3 second sample from the cached pass 1
@@ -25,7 +26,7 @@ from pathlib import Path
 from typing import Any, Dict, List
 
 from clipwright import (compose, domains, freesound, gate, layout, licence, pipeline, render_layout, sounds,
-                        sources, style, tracker, transcribe)
+                        package, sources, style, tracker, transcribe)
 from clipwright.domains import DomainError
 from clipwright.sounds import SoundError
 from clipwright.style import StyleError
@@ -295,6 +296,8 @@ async def render(args) -> None:
         lambda i, seg, st, entry, lib, part, work: _compose_one(i, seg, st, entry, lib, part, work, captions, pack),
         previous, extra_credits=extra_credits,
     )
+    if len(failed) < len(indexes):
+        print(f"next: clip package {args.job} (each segment needs title, description and hashtags)")
     problems = []
     if failed:
         problems.append(f"segments failed: {failed}")
@@ -433,6 +436,56 @@ def sources_command(args) -> None:
         print(f"  [{tag}] {c['title'][:70]} | {c['channel']} | {views} views")
 
 
+def package_command(args) -> None:
+    """Build out/<job>/upload/NN_slug/ for every rendered clip: video, cover candidates, post text."""
+    job_dir = _job_dir(args.job)
+    state = json.loads((job_dir / "state.json").read_text())
+    segments = _load_segments(args.segments or str(job_dir / "segments.json"))
+    pack = domains.load_pack(state["domain"], DOMAINS) if state.get("domain") else None
+    out_dir = OUT / args.job
+    if not (out_dir / "manifest.json").exists():
+        sys.exit(f"nothing rendered for {args.job} yet: run clip render first")
+    manifest = json.loads((out_dir / "manifest.json").read_text())
+    edits_path = job_dir / "post_edits.json"
+    edits = json.loads(edits_path.read_text(encoding="utf-8")) if edits_path.exists() else {}
+    upload = out_dir / "upload"
+    made, skipped = [], []
+    for entry in manifest:
+        n = int(Path(entry["file"]).name[:2])
+        if not 1 <= n <= len(segments):
+            print(f"segment {n}: not in segments.json, skipped", file=sys.stderr)
+            skipped.append(n)
+            continue
+        merged = package.merge_edits(segments[n - 1], edits.get(str(n)))
+        problems = package.check_post(merged, n)
+        if problems:
+            for problem in problems:
+                print(problem, file=sys.stderr)
+            skipped.append(n)
+            continue
+        post = package.build_post(merged, state=state, pack=pack, credits=entry.get("credits", []))
+        folder = upload / package.slug(post["title"], n)
+        for old in upload.glob(f"{n:02d}_*"):  # the title changed: drop the old folder of this clip
+            if old != folder:
+                shutil.rmtree(old)
+        package.write_clip_package(folder, Path(entry["file"]), post,
+                                   package.cover_times(float(entry["duration"]), merged.get("thumbnail_time")),
+                                   merged.get("cover", "a"))
+        made.append((n, post["title"], folder))
+        print(f"{folder}  {post['title']}")
+    if made:
+        lic = licence.classify(state.get("license"), local=not str(state.get("source", "")).startswith("http"))
+        lines = [f"# Upload package: {args.job}", "",
+                 f"Source: {state.get('title') or args.job} ({state.get('source')})", f"Licence: {state.get('license_label') or lic['label']}"]
+        if licence.warning(state.get("license_kind") or lic["kind"]):
+            lines.append(f"Check before posting: {licence.warning(state.get('license_kind') or lic['kind'])}")
+        lines += ["", "Clips in order. Each folder has video.mp4, cover.jpg (and cover_a/b/c.jpg to choose from), post.txt and post.json.", ""]
+        lines += [f"{n}. {folder.name}: {title}" for n, title, folder in made]
+        (upload / "README.md").write_text("\n".join(lines) + "\n", encoding="utf-8")
+    if skipped:
+        sys.exit(f"packaged {len(made)} clips; skipped segments {skipped} (fix the problems above)")
+
+
 def domains_command(args) -> None:
     """List the content domains and what each one's gate requires."""
     for name in domains.list_packs(DOMAINS):
@@ -504,6 +557,8 @@ def main() -> None:
             print(pipeline.profiles_text(_brand(), PROFILES))
         elif args.cmd == "sounds":
             sounds_command(args)
+        elif args.cmd == "package":
+            package_command(args)
         elif args.cmd == "sources":
             sources_command(args)
         elif args.cmd == "domains":

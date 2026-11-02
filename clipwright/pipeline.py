@@ -32,6 +32,10 @@ def build_parser() -> argparse.ArgumentParser:
     so.add_argument("--query", action="append", default=[], metavar="Q", help="an extra search, repeatable")
     so.add_argument("--limit", type=int, default=24, help="how many candidates to look up and list (default 24)")
 
+    pk = sub.add_parser("package", help="build the upload package (title, description, hashtags, covers) for each rendered clip")
+    pk.add_argument("job")
+    pk.add_argument("--segments", default=None, help="segments.json (default jobs/<job>/segments.json)")
+
     sub.add_parser("domains", help="list the content domains and what each one's gate requires")
     sub.add_parser("schema", help="print the style fields and bounds as JSON")
     sub.add_parser("profiles", help="list profiles with their resolved values")
