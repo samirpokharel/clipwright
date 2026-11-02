@@ -7,7 +7,7 @@ analyze_clip and compose_clip import SupoClip lazily, so they only run in the co
 import math
 import subprocess
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Sequence
+from typing import Any, Dict, List, Optional, Sequence, Tuple
 
 from . import sounds, timing
 from .style import CAPTION_PX, TITLE_PX
@@ -160,6 +160,7 @@ def build_ffmpeg_args(
     fonts_dir: str,
     sounds_dir: Path,
     normalize: bool = True,
+    width: int = WIDTH,
 ) -> List[str]:
     """The single ffmpeg command for pass 2."""
     bar = style["progress_bar"]
@@ -169,7 +170,7 @@ def build_ffmpeg_args(
 
     bar_index = None
     if bar["enabled"]:
-        inputs += ["-f", "lavfi", "-i", f"color=c=0x{accent[1:]}:s={WIDTH}x{bar['height_px']}:d={duration}:r=30"]
+        inputs += ["-f", "lavfi", "-i", f"color=c=0x{accent[1:]}:s={width}x{bar['height_px']}:d={duration}:r=30"]
         bar_index, index = index, index + 1
 
     music_index = None
@@ -253,6 +254,15 @@ def _has_audio(path: Path) -> bool:
     return bool(probe.stdout.strip())
 
 
+def _video_size(path: Path) -> Tuple[int, int]:
+    probe = subprocess.run(
+        ["ffprobe", "-v", "error", "-select_streams", "v:0", "-show_entries", "stream=width,height", "-of", "csv=p=0", str(path)],
+        capture_output=True, text=True, check=True,
+    )
+    width, height = probe.stdout.strip().split(",")
+    return int(width), int(height)
+
+
 def analyze_clip(entry: Dict[str, Any]) -> Dict[str, Any]:
     """Pop times, shot-change times and unmatched key words for one pass-1 clip.
 
@@ -271,7 +281,7 @@ def analyze_clip(entry: Dict[str, Any]) -> Dict[str, Any]:
 
 
 def compose_clip(entry: Dict[str, Any], style: Dict[str, Any], mix: sounds.MixPlan, out: Path,
-                 workdir: Path, sounds_dir: Path, *, voice: bool = True) -> None:
+                 workdir: Path, sounds_dir: Path, *, voice: bool = True, captions: bool = True) -> None:
     """Render one clip's pass 2. Raises RuntimeError with ffmpeg's last lines on failure."""
     from src.caption_templates import CAPTION_TEMPLATES
     from src.media.captions import ass_font_name, ass_fonts_dir, build_assemblyai_ass_subtitles
@@ -282,13 +292,14 @@ def compose_clip(entry: Dict[str, Any], style: Dict[str, Any], mix: sounds.MixPl
     ranges = [(float(a), float(b)) for a, b in entry["keep_ranges"]]
     duration = float(entry["duration"])
     ident = style["identity"]
+    width, height = _video_size(pass1)
 
     tpl = caption_template(style, CAPTION_TEMPLATES["default"])
     caption_ass = workdir / f"{pass1.stem}.captions.ass"
     ass_files: List[Path] = []
-    built = build_assemblyai_ass_subtitles(
+    built = captions and build_assemblyai_ass_subtitles(
         video_path=source, clip_start=min(a for a, _ in ranges), clip_end=max(b for _, b in ranges),
-        video_width=WIDTH, video_height=HEIGHT, output_ass_path=caption_ass,
+        video_width=width, video_height=height, output_ass_path=caption_ass,
         font_family=tpl["font_family"], caption_template="default", keep_ranges=ranges,
         hook_title=None, include_captions=True, position_y_override=style["caption"]["position_y"],
         highlight_words=entry.get("key_words") or None, template_override=tpl,
@@ -299,12 +310,12 @@ def compose_clip(entry: Dict[str, Any], style: Dict[str, Any], mix: sounds.MixPl
 
     title_file = workdir / f"{pass1.stem}.title.ass"
     title_file.write_text(title_ass(entry.get("hook_title") or "", style, duration,
-                                    ass_font_name(ident["headline_font"])), encoding="utf-8")
+                                    ass_font_name(ident["headline_font"]), width, height), encoding="utf-8")
     ass_files.append(title_file)
 
     fonts_dir = ass_fonts_dir(ident["headline_font"])
     args = build_ffmpeg_args(pass1, out, ass_files, style, mix, duration,
-                             voice and _has_audio(pass1), str(fonts_dir), sounds_dir)
+                             voice and _has_audio(pass1), str(fonts_dir), sounds_dir, width=width)
     proc = subprocess.run(args, capture_output=True, text=True)
     if proc.returncode != 0:
         tail = "\n".join(proc.stderr.strip().splitlines()[-8:])

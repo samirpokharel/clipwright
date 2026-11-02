@@ -103,6 +103,12 @@ class FfmpegArgsTest(unittest.TestCase):
         self.assertNotIn("w='iw*t", text)
         self.assertIn("color=c=0xFFD400", text)
 
+    def test_bar_width_follows_frame_size(self):
+        args = compose.build_ffmpeg_args(
+            Path("p1.mp4"), Path("out.mp4"), [], resolved(), sounds.MixPlan(), 10.0, True,
+            fonts_dir="/f", sounds_dir=Path("/s"), width=1920)
+        self.assertIn("s=1920x5", " ".join(args))
+
     def test_progress_bar_disabled_has_no_bar(self):
         text = self.joined(st=resolved({"progress_bar": {"enabled": False}}))
         self.assertNotIn("overlay=", text)

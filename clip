@@ -23,6 +23,8 @@ exec docker run --rm \
   -e TEMP_DIR=/work/tmp \
   -e XDG_CACHE_HOME=/work/cache \
   -e HOME=/work/cache \
+  -e PYTHONPATH=/work \
+  ${FREESOUND_API_KEY:+-e FREESOUND_API_KEY} \
   -v "$HERE":/work \
   -v "$HERE/clip.py":/app/clip.py:ro \
   -w /app \
