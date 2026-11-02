@@ -48,6 +48,14 @@ class ParserTest(unittest.TestCase):
         self.assertEqual((own.file, own.license), ("x.mp3", "own"))
         self.assertEqual(p.parse_args(["sounds", "list"]).sounds_cmd, "list")
 
+    def test_check_command_takes_several_urls(self):
+        a = pipeline.build_parser().parse_args(["check", "https://y/1", "https://y/2"])
+        self.assertEqual((a.cmd, a.urls), ("check", ["https://y/1", "https://y/2"]))
+
+    def test_check_needs_at_least_one_url(self):
+        with self.assertRaises(SystemExit):
+            pipeline.build_parser().parse_args(["check"])
+
     def test_frames_command_parses(self):
         p = pipeline.build_parser()
         a = p.parse_args(["frames", "job1", "--segment", "2", "--every", "2"])
@@ -225,9 +233,10 @@ class Pass2LoopTest(unittest.TestCase):
         compose_one.calls = calls
         return compose_one
 
-    def run_loop(self, compose_one, indexes=(1, 2, 3), previous=()):
+    def run_loop(self, compose_one, indexes=(1, 2, 3), previous=(), extra_credits=()):
         return pipeline.compose_all(list(indexes), self.segments, [None] * 3, self.cache, self.library,
-                                    self.out, self.work, compose_one, list(previous), log=lambda *a, **k: None)
+                                    self.out, self.work, compose_one, list(previous), log=lambda *a, **k: None,
+                                    extra_credits=list(extra_credits))
 
     def manifest(self):
         return json.loads((self.out / "manifest.json").read_text())
@@ -266,6 +275,18 @@ class Pass2LoopTest(unittest.TestCase):
     def test_credits_list_cc_by_sounds_used(self):
         self.run_loop(self.stub(credit_on={1}))
         self.assertIn("Calm by alice (CC BY)", (self.out / "credits.txt").read_text())
+
+    def test_source_attribution_is_written_even_with_no_sound_credits(self):
+        line = '"Big Buck Bunny" by Blender, https://u, licensed under Creative Commons Attribution (CC BY)'
+        self.run_loop(self.stub(), extra_credits=[line])
+        self.assertEqual((self.out / "credits.txt").read_text(), line + "\n")
+
+    def test_source_attribution_comes_first_and_survives_a_partial_run(self):
+        line = '"Video" by Creator, https://u, licensed under Creative Commons Attribution (CC BY)'
+        self.run_loop(self.stub(credit_on={1}), indexes=(1,), extra_credits=[line])
+        lines = (self.out / "credits.txt").read_text().splitlines()
+        self.assertEqual(lines[0], line)
+        self.assertIn("Calm by alice (CC BY)", lines)
 
     def test_credits_file_empty_when_nothing_to_credit(self):
         self.run_loop(self.stub())

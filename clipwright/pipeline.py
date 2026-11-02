@@ -22,6 +22,9 @@ def build_parser() -> argparse.ArgumentParser:
     f = sub.add_parser("fetch", help="download and transcribe a video")
     f.add_argument("source")
 
+    ck = sub.add_parser("check", help="read each video's licence and title without downloading it")
+    ck.add_argument("urls", nargs="+", metavar="url")
+
     sub.add_parser("schema", help="print the style fields and bounds as JSON")
     sub.add_parser("profiles", help="list profiles with their resolved values")
 
@@ -171,12 +174,14 @@ def compose_all(
     compose_one: Callable[..., Dict[str, Any]],
     previous: Sequence[Dict[str, Any]],
     log: Callable[..., None] = print,
+    extra_credits: Sequence[str] = (),
 ):
     """Run pass 2 for each selected segment. One clip failing never stops the others.
 
     ``compose_one(i, segment, style, entry, library, part_path, workdir)`` renders to ``part_path``
     and returns ``{"plan": MixPlan}``. The output manifest and credits.txt are written in a
-    ``finally`` so clips already finished are always listed. Returns (fresh entries, failed indexes).
+    ``finally`` so clips already finished are always listed. ``extra_credits`` (for example a CC BY source's
+    attribution) are written to credits.txt first on every run. Returns (fresh entries, failed indexes).
     """
     out_dir = Path(out_dir)
     fresh: List[Dict[str, Any]] = []
@@ -206,7 +211,8 @@ def compose_all(
         kept = [m for m in previous if int(Path(m["file"]).name[:2]) not in replaced]
         manifest = sorted(kept + fresh, key=lambda m: Path(m["file"]).name)
         (out_dir / "manifest.json").write_text(json.dumps(manifest, indent=2))
-        lines = sorted({line for m in manifest for line in m.get("credits", [])})
+        sound_lines = sorted({line for m in manifest for line in m.get("credits", [])} - set(extra_credits))
+        lines = list(dict.fromkeys(extra_credits)) + sound_lines  # source attribution first
         (out_dir / "credits.txt").write_text("\n".join(lines) + ("\n" if lines else ""))
     return fresh, failed
 

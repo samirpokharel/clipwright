@@ -3,6 +3,7 @@
 Runs inside the supoclip-backend image, driven by ./clip. See README.md and `clip --help`.
 
     clip fetch <url|file>            download + transcribe (+ video metadata)
+    clip check <url> [<url> ...]     licence and title of candidate videos, no download
     clip render <job> segments.json  pass 1 (SupoClip cut and frame) then pass 2 (brand + sound)
     clip schema | profiles           what style fields and presets exist
     clip brand-preview <job>         3 second sample from the cached pass 1
@@ -21,7 +22,7 @@ import sys
 from pathlib import Path
 from typing import Any, Dict, List
 
-from clipwright import compose, freesound, layout, pipeline, render_layout, sounds, style, transcribe
+from clipwright import compose, freesound, layout, licence, pipeline, render_layout, sounds, style, transcribe
 from clipwright.sounds import SoundError
 from clipwright.style import StyleError
 
@@ -58,6 +59,7 @@ def _metadata(url: str) -> Dict[str, Any]:
             info = ydl.extract_info(url, download=False)
         return {
             "title": info.get("title"), "channel": info.get("channel") or info.get("uploader"),
+            "license": info.get("license"),  # only Creative Commons videos report one
             "description": (info.get("description") or "")[:1200],
             "categories": info.get("categories") or [], "tags": (info.get("tags") or [])[:15],
         }
@@ -111,12 +113,20 @@ async def fetch(args) -> None:
     (job_dir / "transcript.txt").write_text(transcript, encoding="utf-8")
     words = (load_cached_transcript_data(Path(video_path)) or {}).get("words") or []
     duration = VideoService._get_file_duration(Path(video_path))
-    state = {"video_path": str(video_path), "source": source, "duration": duration, **meta}
+    lic = licence.classify(meta.get("license"), local=url is None)
+    state = {"video_path": str(video_path), "source": source, "duration": duration, **meta,
+             "license_kind": lic["kind"], "license_label": lic["label"],
+             "attribution": licence.attribution(meta.get("title"), meta.get("channel"), source, lic["kind"])}
     (job_dir / "state.json").write_text(json.dumps(state, indent=2))
     print(f"job={job}")
     print(f"video={video_path} duration={duration}s words={len(words)}")
     if meta.get("title"):
         print(f"title={meta['title']} channel={meta.get('channel')}")
+    print(f"licence={lic['label']}")
+    if licence.warning(lic["kind"]):
+        print(f"WARNING: {licence.warning(lic['kind'])}")
+    if state["attribution"]:
+        print(f"attribution (goes into credits.txt): {state['attribution']}")
     print(f"transcript={job_dir / 'transcript.txt'} ({len(transcript.splitlines())} lines)")
 
 
@@ -252,10 +262,11 @@ async def render(args) -> None:
     out_manifest = out_dir / "manifest.json"
     previous = json.loads(out_manifest.read_text()) if out_manifest.exists() else []
     captions = not args.no_subtitles
+    extra_credits = [state["attribution"]] if state.get("attribution") else []
     _, failed = pipeline.compose_all(
         indexes, segments, styles, cache, library, out_dir, pass1_dir / "work",
         lambda i, seg, st, entry, lib, part, work: _compose_one(i, seg, st, entry, lib, part, work, captions),
-        previous,
+        previous, extra_credits=extra_credits,
     )
     if failed:
         sys.exit(f"segments failed: {failed}")
@@ -289,6 +300,20 @@ async def brand_preview(args) -> None:
     out.parent.mkdir(parents=True, exist_ok=True)
     _compose_one(n, segments[n - 1], styles[n - 1], entry, library, out, work, True)
     print(out)
+
+
+def check_command(args) -> None:
+    """Screen candidate videos: licence, title and length, with no download."""
+    for url in args.urls:
+        meta = _metadata(url)
+        if not meta:
+            print(f"{url}\n   could not read the video's metadata")
+            continue
+        lic = licence.classify(meta.get("license"))
+        print(f"{url}\n   {meta.get('title')}  |  {meta.get('channel')}\n   {lic['label']}"
+              + ("  ->  reusable with credit" if lic["reuse_ok"] else ""))
+        if licence.warning(lic["kind"]):
+            print(f"   WARNING: {licence.warning(lic['kind'])}")
 
 
 def frames_command(args) -> None:
@@ -347,6 +372,8 @@ def main() -> None:
             sounds_command(args)
         elif args.cmd == "frames":
             frames_command(args)
+        elif args.cmd == "check":
+            check_command(args)
         else:
             asyncio.run({"fetch": fetch, "render": render, "brand-preview": brand_preview}[args.cmd](args))
     except (StyleError, SoundError, pipeline.PipelineError, freesound.FreesoundError, transcribe.TranscribeError) as exc:

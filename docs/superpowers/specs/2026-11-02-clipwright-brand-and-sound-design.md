@@ -342,6 +342,17 @@ faster-whisper lives in a thin derived image, `clipwright-runtime` (`Dockerfile.
 
 **Not measured:** a 15 minute video with faster-whisper (extrapolated to about half the openai-whisper time), larger models, and a Google Colab GPU. Colab would need manual upload and download steps, YouTube often blocks its IPs so the download must stay local, and it would send the audio to Google, so it must not be used for client or office material.
 
-## 14. Licensing and responsibility
+## 14. Source licence check (added 2026-11-02)
+
+Clips of other people's videos go to a public channel, so the tool checks each source's licence.
+
+- **Data.** yt-dlp returns a `license` only for Creative Commons videos, as `Creative Commons Attribution license (reuse allowed)`. Standard-licence videos return nothing. Verified on 2026-11-02 against a Creative Commons video (Big Buck Bunny) and two standard ones.
+- **Classes** (`clipwright/licence.py`): `cc-by` (reusable with credit), `cc-other` (some other Creative Commons text, for example NonCommercial: read the terms), `standard` (needs the creator's permission), `local` (a local file: your responsibility).
+- **`clip check <url> ...`** prints licence, title and channel with no download, to screen candidates before a long fetch.
+- **`clip fetch`** prints the licence, a warning when reuse needs permission, and the attribution line, and saves `license_kind`, `license_label` and `attribution` in `state.json`.
+- **`clip render`** writes a CC BY source's attribution first in `credits.txt` on every run, including partial `--only` runs.
+- **Limits.** This screens the licence YouTube records. It cannot know about permission given outside YouTube, and it is not legal advice.
+
+## 15. Licensing and responsibility
 
 This repository is AGPL-3.0 because it imports SupoClip's AGPL-3.0 code. Clips made from other people's videos remain those creators' footage, and the owner is responsible for permission to publish them. Music and sounds are the owner's responsibility: the tools record licences and refuse the wrong ones, but do not decide fair use or platform policy.

@@ -18,7 +18,12 @@ progress bar and sound. No Docker stack, DB, or API key needed.
    Local files must sit under `__CLIP_DIR__/` (mounted as `/work`).
    Env `WHISPER_MODEL_SIZE=base|small|medium` (default `small`) and `WHISPER_BACKEND=auto|faster|openai`
    (default `auto` = faster-whisper, about 2x real time on CPU; `openai` is the slower original).
-   Prints `job=<id>`.
+   Prints `job=<id>` and the source's `licence=` line.
+   **Licence:** before spending a long fetch on a candidate, `clip check <url> [<url> ...]` shows its licence
+   and title with no download. Tell the user the licence in one line. A Creative Commons (CC BY) video can be
+   reused with credit, and its attribution line is written to `credits.txt` for the post description. A
+   standard-licence video needs the creator's permission: say so plainly, then continue if the user decides
+   to. Local files are the user's responsibility.
 3. **Read** `__CLIP_DIR__/jobs/<job>/transcript.txt` (lines like `[00:12 - 00:21] text`) and
    `jobs/<job>/state.json` (title, channel, description, categories, tags when available).
 4. **Choose clips and a style** for each (rules below). Run `clip profiles` and `clip schema` if you
@@ -36,7 +41,7 @@ progress bar and sound. No Docker stack, DB, or API key needed.
    minute. `clip brand-preview <job> --segment N` renders a 3 second sample. Changing a
    segment's `start_time`, `end_time` or layout needs a render without `--recompose` (it tells you).
 
-Other commands: `clip frames` (contact sheet), `clip schema`, `clip profiles`, `clip sounds`.
+Other commands: `clip check` (licence screen), `clip frames` (contact sheet), `clip schema`, `clip profiles`, `clip sounds`.
 Render flags: `--only N [N ...]`, `--recompose`, `--exact` (use my timestamps verbatim; default snaps
 openings to sentence starts), `--clip-length short|medium|long`, `--max-seconds N`, `--original`
 (keep aspect), `--no-subtitles`, `--no-music --no-whoosh --no-pop --no-sting`, and
@@ -143,7 +148,7 @@ Scores are 0-25 each, total is their sum (0-100). `key_words`, `source_music`, `
   environment; only CC0 and CC-BY are accepted). `clip sounds list` shows the library.
 - The user clips other people's videos for a public channel. Music must be cleared for that use. If
   `credits.txt` is not empty, tell the user to paste its lines into the post description.
-- The footage belongs to its creators. Remind the user to get permission before posting.
+- The footage belongs to its creators unless the licence says otherwise (see Licence above). For CC BY sources, tell the user to paste `credits.txt` into the description: the source credit is the first line.
 
 ## Notes
 

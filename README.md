@@ -43,6 +43,7 @@ Local files must live inside this folder (it is mounted as `/work`).
 ### Commands
 | Command | What it does |
 |---|---|
+| `clip check <url> [<url> ...]` | Read each video's licence and title without downloading. Creative Commons (CC BY) is reusable with credit, anything else needs the creator's permission. |
 | `clip fetch <url\|file>` | Download, transcribe, save `transcript.txt` and `state.json` (with title, channel, description, tags when available). |
 | `clip render <job> <segments.json>` | Pass 1 then pass 2. Flags: `--only N [N ...]`, `--recompose`, `--exact`, `--clip-length`, `--max-seconds`, `--original`, `--no-subtitles`, `--no-music/--no-whoosh/--no-pop/--no-sting`, `--allow-brand-override`. |
 | `clip render ... --recompose` | Reuse the cached pass 1 and redo only pass 2. Use it to try style and sound changes. |
@@ -53,6 +54,9 @@ Local files must live inside this folder (it is mounted as `/work`).
 | `clip sounds add\|list` | Manage the sound library. |
 
 An invalid style stops the run before anything renders and names the segment and field.
+
+## Source licence
+YouTube reports a licence only for Creative Commons videos (`Creative Commons Attribution license (reuse allowed)`). Every other video comes back with none, which means the standard licence: all rights stay with the creator. `clip check` and `clip fetch` print the result and warn when reuse needs permission. For a CC BY source, the attribution line (`"Title" by Channel, URL, licensed under Creative Commons Attribution (CC BY)`) is written first in `out/<id>/credits.txt` on every render, so paste `credits.txt` into the post description. Only plain CC BY counts as reusable: other Creative Commons variants (NonCommercial and so on) are flagged to read, and a local file is your responsibility. This is a screen, not legal advice, and it does not know whether a creator has given you permission some other way.
 
 ## Brand and style
 Style is resolved in three layers, later layers winning: **`brand.json`** (identity and base style), then a **profile** in `profiles/`, then the **`style` block** of a segment.
