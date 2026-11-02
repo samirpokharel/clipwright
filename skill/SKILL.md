@@ -19,6 +19,11 @@ progress bar and sound. No Docker stack, DB, or API key needed.
    Env `WHISPER_MODEL_SIZE=base|small|medium` (default `small`) and `WHISPER_BACKEND=auto|faster|openai`
    (default `auto` = faster-whisper, about 2x real time on CPU; `openai` is the slower original).
    Prints `job=<id>`.
+   Non-English (e.g. Nepali): Whisper is poor; use `--captions ne` to take YouTube's own
+   (auto) captions with word timings instead. Fast and far more accurate. Danda (।) counts
+   as a sentence end and captions use complex shaping, so Devanagari renders correctly.
+   `TRANSCRIPTION_LANGUAGE=<code>` forces Whisper's language. Timestamps may be plain seconds
+   ("87.55") for sub-second cuts with `--exact`.
 3. **Read** `__CLIP_DIR__/jobs/<job>/transcript.txt` (lines like `[00:12 - 00:21] text`) and
    `jobs/<job>/state.json` (title, channel, description, categories, tags when available).
 4. **Choose clips and a style** for each (rules below). Run `clip profiles` and `clip schema` if you
@@ -37,9 +42,10 @@ progress bar and sound. No Docker stack, DB, or API key needed.
    segment's `start_time`, `end_time` or layout needs a render without `--recompose` (it tells you).
 
 Other commands: `clip frames` (contact sheet), `clip schema`, `clip profiles`, `clip sounds`.
-Render flags: `--only N [N ...]`, `--recompose`, `--exact` (use my timestamps verbatim; default snaps
+Render flags: `--only N [N ...]`, `--recompose`, `--exact` (use my start AND end verbatim; default snaps
 openings to sentence starts), `--clip-length short|medium|long`, `--max-seconds N`, `--original`
-(keep aspect), `--no-subtitles`, `--no-music --no-whoosh --no-pop --no-sting`, and
+(keep aspect), `--letterbox` (upstream blurred-background layout for "auto" clips; default is a
+full-bleed crop tracking the speaker), `--no-subtitles`, `--no-music --no-whoosh --no-pop --no-sting`, and
 `--allow-brand-override` (lets a profile or clip style change locked identity fields; never use it
 unless the user asks). Output: `__CLIP_DIR__/out/<job>/NN_*.mp4`, `manifest.json`, `credits.txt`.
 

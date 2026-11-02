@@ -66,6 +66,69 @@ def _metadata(url: str) -> Dict[str, Any]:
         return {}
 
 
+def _show_whisper_progress() -> None:
+    """Make Whisper print a tqdm progress bar (upstream runs it silent)."""
+    try:
+        from whisper.model import Whisper
+    except ImportError:  # not using local Whisper
+        return
+    original = Whisper.transcribe
+
+    def transcribe(self, audio, **kwargs):
+        kwargs.setdefault("verbose", False)  # False = progress bar, None = silent
+        return original(self, audio, **kwargs)
+
+    Whisper.transcribe = transcribe
+
+
+def _youtube_caption_result(url: str, lang: str) -> dict:
+    """YouTube captions (manual or auto) as a Whisper-style result dict.
+
+    For languages Whisper handles badly (e.g. Nepali), YouTube's own ASR is far
+    more accurate and its json3 format carries per-word offsets.
+    """
+    import tempfile
+
+    import yt_dlp
+
+    with tempfile.TemporaryDirectory() as tmp:
+        opts = {
+            "skip_download": True, "writesubtitles": True, "writeautomaticsub": True,
+            "subtitleslangs": [lang], "subtitlesformat": "json3",
+            "outtmpl": f"{tmp}/cap.%(ext)s", "quiet": True, "no_warnings": True,
+        }
+        with yt_dlp.YoutubeDL(opts) as ydl:
+            ydl.download([url])
+        files = list(Path(tmp).glob("cap.*.json3"))
+        if not files:
+            sys.exit(f"No '{lang}' captions on YouTube for {url}")
+        data = json.loads(files[0].read_text(encoding="utf-8"))
+
+    segments = []
+    for ev in data.get("events", []):
+        start_ms, dur_ms = ev.get("tStartMs", 0), ev.get("dDurationMs", 0)
+        words = []
+        for seg in ev.get("segs") or []:
+            text = seg.get("utf8", "").strip()
+            if not text or text == ">>":  # >> marks a speaker change
+                continue
+            text = text.removeprefix(">>").strip()
+            words.append({"word": f" {text}", "start": (start_ms + seg.get("tOffsetMs", 0)) / 1000})
+        if words:
+            segments.append({"words": words, "event_end": (start_ms + dur_ms) / 1000})
+
+    # A word ends where the next one starts (capped), the last at its event's end.
+    flat = [w for s in segments for w in s["words"]]
+    for i, w in enumerate(flat):
+        nxt = flat[i + 1]["start"] if i + 1 < len(flat) else w["start"] + 1.0
+        w["end"] = round(min(nxt, w["start"] + 1.5), 3)
+    for s in segments:
+        s["start"], s["end"] = s["words"][0]["start"], max(s["words"][-1]["end"], s["words"][0]["start"])
+        s["text"] = "".join(w["word"] for w in s["words"]).strip()
+        del s["event_end"]
+    return {"text": " ".join(s["text"] for s in segments), "segments": segments, "language": lang}
+
+
 async def _transcribe(video_path: Path, url) -> str:
     """Timestamped transcript text, with word timings cached for captions. Backend per WHISPER_BACKEND."""
     from src.media.transcription import cache_transcript_data, format_transcript_for_analysis
@@ -75,6 +138,7 @@ async def _transcribe(video_path: Path, url) -> str:
     size = os.environ.get("WHISPER_MODEL_SIZE", "small")
     print(f"transcribing with {backend}-whisper ({size})", file=sys.stderr)
     if backend == "openai":
+        _show_whisper_progress()
         return await VideoService.generate_transcript(video_path, source_url=url)
     language = (os.environ.get("TRANSCRIPTION_LANGUAGE") or "").split("_")[0] or None  # "en_us" -> "en"
     result = await asyncio.to_thread(transcribe.transcribe_faster, video_path, size, language)
@@ -104,7 +168,16 @@ async def fetch(args) -> None:
         meta = _metadata(source)
 
     video_path = await VideoService.prepare_source(Path(video_path))
-    transcript = await _transcribe(Path(video_path), url)
+    if args.captions:
+        if not url:
+            sys.exit("--captions needs a YouTube URL")
+        from src.media.transcription import cache_transcript_data, format_transcript_for_analysis
+
+        result = _youtube_caption_result(url, args.captions)
+        cache_transcript_data(Path(video_path), result)
+        transcript = "\n".join(format_transcript_for_analysis(result))
+    else:
+        transcript = await _transcribe(Path(video_path), url)
 
     job_dir = _job_dir(job)
     job_dir.mkdir(parents=True, exist_ok=True)
@@ -118,6 +191,101 @@ async def fetch(args) -> None:
     if meta.get("title"):
         print(f"title={meta['title']} channel={meta.get('channel')}")
     print(f"transcript={job_dir / 'transcript.txt'} ({len(transcript.splitlines())} lines)")
+
+
+def _use_fill_layout() -> None:
+    """Replace SupoClip's vertical layout with a full-bleed face-tracked crop.
+
+    Upstream shows content shots, low webcams and galleries on a blurred
+    background; fill mode always crops 9:16 onto the speaker instead.
+    """
+    import numpy as np
+    from src import video_utils
+    from src.config import get_config
+    from src.media import reframing as rf
+
+    original = rf.build_vertical_filter_plan
+
+    def plan(input_path, width, height, speaker_turns=None, speaker_words=None):
+        crop_w, crop_h = rf.compute_vertical_crop_dims(width, height)
+        if crop_w >= width:  # already portrait: nothing to crop
+            return original(input_path, width, height, speaker_turns, speaker_words)
+        duration = rf.ffprobe_duration(input_path)
+        if speaker_words and get_config().speaker_framing:
+            from src.media.speaker_framing import build_speaker_filter_plan
+
+            try:
+                speaker_plan = build_speaker_filter_plan(
+                    input_path, width, height, crop_w, crop_h, duration,
+                    speaker_turns or [], speaker_words,
+                )
+            except Exception as exc:
+                print(f"speaker framing skipped: {exc}", file=sys.stderr)
+                speaker_plan = None
+            if speaker_plan and speaker_plan[1] == "vf":  # cut to whoever talks
+                return speaker_plan[0], "vf", None
+        try:
+            track, scene_cuts = rf.analyze_vertical_clip(input_path)[:2]
+        except Exception as exc:
+            print(f"face tracking failed ({exc}); centring crop", file=sys.stderr)
+            track, scene_cuts = [], []
+        keys = rf.build_crop_trajectory(track, width, crop_w) if track else []
+        if keys and rf.trajectory_has_movement(keys, crop_w):
+            x_expr = (
+                rf.build_scene_crop_expression(track, scene_cuts, duration, width, crop_w)
+                if scene_cuts else rf.build_smooth_pan_expression(keys)
+            )
+            return f"crop={crop_w}:{crop_h}:x='{x_expr}':y=0,{rf.VERTICAL_SCALE_CHAIN}", "vf", None
+        if keys:
+            x = int(np.median([x for _, x in keys]))
+        else:
+            x = rf.detect_optimal_crop_region(input_path, 0, min(duration, 12.0))[0]
+        x = rf.clamp_even(x, 0, max(0, width - crop_w))
+        tail = rf.kenburns_zoom_fragment(duration) or rf.VERTICAL_SCALE_CHAIN
+        return f"crop={crop_w}:{crop_h}:{x}:0,{tail}", "vf", None
+
+    rf.build_vertical_filter_plan = plan
+    video_utils.build_vertical_filter_plan = plan
+
+
+def _patch_sentence_ends() -> None:
+    """Treat the Devanagari danda (। ॥) as a sentence end, like . ! ?"""
+    import re
+
+    from src import clip_openings  # noqa: F401  (load it so it gets patched too)
+
+    pattern = re.compile(r"""[.!?।॥]["')\]}]*$""")
+    for name, module in list(sys.modules.items()):
+        if name.startswith("src") and hasattr(module, "SENTENCE_END_RE"):
+            module.SENTENCE_END_RE = pattern
+
+
+def _keep_exact_end() -> None:
+    """Stop SupoClip extending a clip's end to the next sentence boundary."""
+    for name, module in list(sys.modules.items()):
+        if name.startswith("src") and hasattr(module, "extend_keep_ranges_to_sentence_boundary"):
+            module.extend_keep_ranges_to_sentence_boundary = (
+                lambda video_path, keep_ranges, *a, **k: keep_ranges
+            )
+
+
+def _use_complex_text_shaping() -> None:
+    """Burn captions with HarfBuzz shaping so Devanagari conjuncts form.
+
+    Upstream uses ffmpeg's `subtitles` filter, which has no shaping option, and
+    the default left "क्ष" as "क्‌ष". The `ass` filter takes the same file.
+    """
+    from src.media.ffmpeg import ffmpeg_escape_filter_path
+
+    def fragment(ass_path, fonts_dir=None):
+        out = f"ass=filename={ffmpeg_escape_filter_path(ass_path)}:shaping=complex"
+        if fonts_dir:
+            out += f":fontsdir={ffmpeg_escape_filter_path(fonts_dir)}"
+        return out
+
+    for name, module in list(sys.modules.items()):
+        if name.startswith("src") and hasattr(module, "subtitles_filter_fragment"):
+            module.subtitles_filter_fragment = fragment
 
 
 def _prepare_segments(segments, indexes, video_path, args):
@@ -237,6 +405,13 @@ async def render(args) -> None:
     bad = [i for i in indexes if not 1 <= i <= len(segments)]
     if bad:
         sys.exit(f"segment numbers out of range: {bad} (segments.json has {len(segments)})")
+
+    _use_complex_text_shaping()
+    _patch_sentence_ends()
+    if args.exact:
+        _keep_exact_end()
+    if not args.letterbox and not args.original:
+        _use_fill_layout()
 
     pass1_dir = job_dir / "pass1"
     (pass1_dir / "work").mkdir(parents=True, exist_ok=True)

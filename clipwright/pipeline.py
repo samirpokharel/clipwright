@@ -21,6 +21,8 @@ def build_parser() -> argparse.ArgumentParser:
 
     f = sub.add_parser("fetch", help="download and transcribe a video")
     f.add_argument("source")
+    f.add_argument("--captions", metavar="LANG",
+                   help="use YouTube's captions in LANG (e.g. ne) instead of Whisper")
 
     sub.add_parser("schema", help="print the style fields and bounds as JSON")
     sub.add_parser("profiles", help="list profiles with their resolved values")
@@ -39,7 +41,9 @@ def build_parser() -> argparse.ArgumentParser:
     r.add_argument("--max-seconds", type=float, default=60.0)
     r.add_argument("--no-subtitles", action="store_true", help="skip captions")
     r.add_argument("--original", action="store_true", help="keep source aspect ratio")
-    r.add_argument("--exact", action="store_true", help="skip opening refinement; use my timestamps")
+    r.add_argument("--letterbox", action="store_true",
+                   help="upstream layout: blurred background for content/webcam shots")
+    r.add_argument("--exact", action="store_true", help="use my start and end timestamps verbatim (no sentence snapping)")
 
     b = sub.add_parser("brand-preview", help="render a 3 second sample from cached pass 1")
     b.add_argument("job")
