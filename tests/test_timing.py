@@ -1,6 +1,6 @@
 import unittest
 
-from clipwright.timing import match_key_words, to_clip_time
+from clipwright.timing import match_key_words, phrase_indices, to_clip_time
 
 
 def w(text, start_s, end_s):
@@ -70,6 +70,41 @@ class MatchKeyWordsTest(unittest.TestCase):
         matches, _ = match_key_words(words, ["go"], [(0.0, 5.0)])
         self.assertEqual(len(matches), 1)
         self.assertAlmostEqual(matches[0][0], 1.0)
+
+
+class PhraseIndicesTest(unittest.TestCase):
+    """Indices into the caption word list, for SupoClip's emphasis_indices."""
+
+    def words(self, text):
+        return [w(t, i * 0.5, i * 0.5 + 0.4) for i, t in enumerate(text.split())]
+
+    def test_single_word_index(self):
+        idx, unmatched = phrase_indices(self.words("he was powerful, and strong"), ["powerful"])
+        self.assertEqual((idx, unmatched), ([2], []))
+
+    def test_phrase_gives_every_word_of_the_phrase(self):
+        idx, _ = phrase_indices(self.words("it has an iron core, really"), ["iron core"])
+        self.assertEqual(idx, [3, 4])
+
+    def test_stopwords_elsewhere_are_not_highlighted(self):
+        # "chopped in half": the earlier "in" must stay plain, only the phrase's own "in" counts
+        idx, _ = phrase_indices(self.words("in the studio it is chopped in half"), ["chopped in half"])
+        self.assertEqual(idx, [5, 6, 7])
+
+    def test_first_occurrence_only(self):
+        idx, _ = phrase_indices(self.words("go go go"), ["go"])
+        self.assertEqual(idx, [0])
+
+    def test_unmatched_phrase_is_reported(self):
+        idx, unmatched = phrase_indices(self.words("one two"), ["two", "nine ten"])
+        self.assertEqual((idx, unmatched), ([1], ["nine ten"]))
+
+    def test_punctuation_and_case_insensitive(self):
+        idx, _ = phrase_indices(self.words("Rick, RUBIN: said"), ["rick rubin"])
+        self.assertEqual(idx, [0, 1])
+
+    def test_no_key_words_gives_none_so_auto_emphasis_can_apply(self):
+        self.assertEqual(phrase_indices(self.words("a b"), []), (None, []))
 
 
 if __name__ == "__main__":

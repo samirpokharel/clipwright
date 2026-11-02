@@ -74,7 +74,7 @@ async def fetch(args) -> None:
     local = Path(source)
     meta: Dict[str, Any] = {}
     if local.exists():
-        video_path, job, url = local, local.stem, None
+        video_path, job, url = local, pipeline.safe_job_id(local.stem), None
         meta = {"title": local.stem}
     else:
         video_id = get_youtube_video_id(source)
@@ -150,15 +150,6 @@ async def _pass1(segments, indexes, video_path, args, pass1_dir: Path, cache: Di
     (pass1_dir / "manifest.json").write_text(json.dumps(cache, indent=2))
 
 
-def _entry_for(cache, i, seg) -> Dict[str, Any]:
-    entry = cache.get(str(i))
-    if not entry or not Path(entry["pass1"]).exists():
-        sys.exit(f"no cached pass 1 for segment {i}; run render without --recompose")
-    if (entry["start_time"], entry["end_time"]) != (seg["start_time"], seg["end_time"]):
-        sys.exit(f"segment {i} start or end time changed since pass 1; run render without --recompose")
-    return dict(entry, hook_title=seg.get("hook_title"), key_words=seg.get("key_words") or [])
-
-
 def _compose_one(i, seg, st, entry, library, dest: Path, workdir: Path, captions: bool) -> Dict[str, Any]:
     analysis = compose.analyze_clip(entry)
     for word in analysis["unmatched"]:
@@ -192,38 +183,21 @@ async def render(args) -> None:
     (pass1_dir / "work").mkdir(parents=True, exist_ok=True)
     manifest_path = pass1_dir / "manifest.json"
     cache = json.loads(manifest_path.read_text()) if manifest_path.exists() else {}
-    if not args.recompose:
+    if args.recompose:
+        pipeline.check_entries(cache, indexes, segments)  # fail before any clip renders
+    else:
         await _pass1(segments, indexes, video_path, args, pass1_dir, cache)
 
     out_dir = OUT / args.job
     out_dir.mkdir(parents=True, exist_ok=True)
     out_manifest = out_dir / "manifest.json"
-    old = json.loads(out_manifest.read_text()) if out_manifest.exists() else []
-    kept = [m for m in old if int(Path(m["file"]).name[:2]) not in indexes]
-    fresh, failed = [], []
-    for i in indexes:
-        seg, st = segments[i - 1], styles[i - 1]
-        entry = _entry_for(cache, i, seg)
-        dest = out_dir / pipeline.clip_filename(i, seg)
-        part = dest.with_name(dest.stem + ".part.mp4")
-        try:
-            done = _compose_one(i, seg, st, entry, library, part, pass1_dir / "work", not args.no_subtitles)
-        except RuntimeError as exc:
-            print(f"segment {i} failed:\n{exc}", file=sys.stderr)
-            failed.append(i)
-            continue
-        pipeline.replace_output(part, dest, i)
-        title = (seg.get("hook_title") or "").strip()
-        fresh.append({"file": str(dest), "hook_title": title, "duration": entry["duration"],
-                      "profile": (seg.get("style") or {}).get("profile"),
-                      "credits": sounds.credits([done["plan"]], library)})
-        print(f"{dest}  {entry['duration']:.1f}s  {title}")
-        print(f"    sounds: {pipeline.describe_plan(done['plan'])}")
-
-    manifest = sorted(kept + fresh, key=lambda m: Path(m["file"]).name)
-    out_manifest.write_text(json.dumps(manifest, indent=2))
-    lines = sorted({line for m in manifest for line in m.get("credits", [])})
-    (out_dir / "credits.txt").write_text("\n".join(lines) + ("\n" if lines else ""))
+    previous = json.loads(out_manifest.read_text()) if out_manifest.exists() else []
+    captions = not args.no_subtitles
+    _, failed = pipeline.compose_all(
+        indexes, segments, styles, cache, library, out_dir, pass1_dir / "work",
+        lambda i, seg, st, entry, lib, part, work: _compose_one(i, seg, st, entry, lib, part, work, captions),
+        previous,
+    )
     if failed:
         sys.exit(f"segments failed: {failed}")
 
@@ -242,7 +216,7 @@ async def brand_preview(args) -> None:
         sys.exit(f"segment {n} out of range (segments.json has {len(segments)})")
     pass1_dir = job_dir / "pass1"
     cache = json.loads((pass1_dir / "manifest.json").read_text()) if (pass1_dir / "manifest.json").exists() else {}
-    entry = _entry_for(cache, n, segments[n - 1])
+    entry = pipeline.entry_for(cache, n, segments[n - 1])
 
     seconds = min(3.0, entry["duration"])
     work = pass1_dir / "work"
@@ -264,27 +238,8 @@ def sounds_command(args) -> None:
             print(f"{e['id']:<16} {e['kind']:<7} {e['license']:<6} {e['source']:<12} {e['file']}")
         return
     if args.file:
-        src = Path(args.file)
-        if not src.exists():
-            sys.exit(f"file not found: {src}")
-        if args.license == "CC-BY" and not args.author:
-            sys.exit("CC-BY needs --author")
-        folder = "music" if args.kind == "music" else "fx"
-        dest = SOUNDS / folder / src.name
-        dest.parent.mkdir(parents=True, exist_ok=True)
-        shutil.copy2(src, dest)
-        library_path = SOUNDS / "library.json"
-        before = library_path.read_text() if library_path.exists() else "[]"
-        entry = {"id": f"own-{src.stem}", "kind": args.kind, "file": f"{folder}/{src.name}", "source": "own",
-                 "license": args.license, "author": args.author, "url": None}
-        library_path.write_text(json.dumps(json.loads(before) + [entry], indent=2) + "\n")
-        try:
-            sounds.load_library(SOUNDS)
-        except SoundError:
-            library_path.write_text(before)
-            dest.unlink()
-            raise
-        print(f"added {entry['id']}")
+        entry = sounds.add_own_file(SOUNDS, Path(args.file), args.kind, args.license, args.author)
+        print(f"added {entry['id']} ({entry['license']})")
         return
     if not args.target:
         sys.exit("give a Freesound URL or id, or use --file")
@@ -303,7 +258,7 @@ def main() -> None:
             sounds_command(args)
         else:
             asyncio.run({"fetch": fetch, "render": render, "brand-preview": brand_preview}[args.cmd](args))
-    except (StyleError, SoundError, freesound.FreesoundError) as exc:
+    except (StyleError, SoundError, pipeline.PipelineError, freesound.FreesoundError) as exc:
         sys.exit(str(exc))
 
 

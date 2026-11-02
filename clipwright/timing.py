@@ -28,6 +28,44 @@ def _norm(text: str) -> str:
     return re.sub(r"[^0-9a-z]+", "", text.lower())
 
 
+def _phrase_tokens(key: str) -> List[str]:
+    return [t for t in (_norm(part) for part in key.split()) if t]
+
+
+def _find(tokens: Sequence[str], phrase: Sequence[str]) -> Optional[int]:
+    """Index of the first run of consecutive tokens equal to ``phrase``, or None."""
+    if not phrase:
+        return None
+    for i in range(len(tokens) - len(phrase) + 1):
+        if all(tokens[i + j] == phrase[j] for j in range(len(phrase))):
+            return i
+    return None
+
+
+def phrase_indices(
+    words: Sequence[Dict[str, Any]], key_words: Sequence[str]
+) -> Tuple[Optional[List[int]], List[str]]:
+    """Positions (in ``words``) of the first spoken occurrence of each key word or phrase.
+
+    Returns every word of a matched phrase, so SupoClip's ``emphasis_indices`` highlights exactly
+    those words and nothing else (a phrase like "chopped in half" never lights up another "in").
+    Returns ``(None, [])`` when there are no key words, so SupoClip's automatic emphasis applies.
+    """
+    if not key_words:
+        return None, []
+    tokens = [_norm(word.get("text", "")) for word in words]
+    indices: List[int] = []
+    unmatched: List[str] = []
+    for key in key_words:
+        phrase = _phrase_tokens(key)
+        start = _find(tokens, phrase)
+        if start is None:
+            unmatched.append(key)
+        else:
+            indices.extend(range(start, start + len(phrase)))
+    return sorted(set(indices)), unmatched
+
+
 def match_key_words(
     words: Sequence[Dict[str, Any]],
     key_words: Sequence[str],
@@ -47,18 +85,13 @@ def match_key_words(
         if clip_time is not None and token:
             spoken.append((token, clip_time))
 
+    tokens = [token for token, _ in spoken]
     matches: List[Tuple[float, str]] = []
     unmatched: List[str] = []
     for key in key_words:
-        tokens = [t for t in (_norm(part) for part in key.split()) if t]
-        found = None
-        if tokens:
-            for i in range(len(spoken) - len(tokens) + 1):
-                if all(spoken[i + j][0] == tokens[j] for j in range(len(tokens))):
-                    found = spoken[i][1]
-                    break
-        if found is None:
+        start = _find(tokens, _phrase_tokens(key))
+        if start is None:
             unmatched.append(key)
         else:
-            matches.append((found, key))
+            matches.append((spoken[start][1], key))
     return matches, unmatched

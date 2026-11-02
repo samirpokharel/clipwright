@@ -3,11 +3,13 @@ file naming and preview range truncation. Stdlib only, so they run on the host i
 
 import argparse
 import json
+import re
+import sys
 from pathlib import Path
-from typing import Any, Dict, List, Sequence, Tuple
+from typing import Any, Callable, Dict, List, Sequence, Tuple
 
 from . import style
-from .sounds import KINDS, MixPlan
+from .sounds import KINDS, MixPlan, credits
 from .style import StyleError
 
 SOUND_KINDS = ("music", "whoosh", "pop", "sting")
@@ -51,7 +53,8 @@ def build_parser() -> argparse.ArgumentParser:
     add.add_argument("target", nargs="?", help="Freesound URL or id")
     add.add_argument("--kind", required=True, choices=KINDS)
     add.add_argument("--file", help="a local file instead of a Freesound sound")
-    add.add_argument("--license", choices=["CC0", "CC-BY", "own"], default="own")
+    add.add_argument("--license", choices=["CC0", "CC-BY", "own"],
+                     help="required with --file; there is no default")
     add.add_argument("--author")
     ssub.add_parser("list", help="print the library")
     return p
@@ -92,10 +95,97 @@ def resolve_all(
     return styles
 
 
+def safe_job_id(stem: str) -> str:
+    """A job id usable inside ffmpeg filter paths: letters, digits, underscore and hyphen only.
+
+    YouTube ids already qualify. Local file names with quotes, commas, semicolons, brackets or
+    colons would break the filter graph that pass 2 builds from the job folder path.
+    """
+    return re.sub(r"[^A-Za-z0-9_-]+", "_", stem).strip("_") or "job"
+
+
 def clip_filename(index: int, segment: Dict[str, Any]) -> str:
     start = str(segment["start_time"]).replace(":", "")
     end = str(segment["end_time"]).replace(":", "")
     return f"{index:02d}_clip_{start}-{end}.mp4"
+
+
+class PipelineError(ValueError):
+    """The cached pass-1 state does not match the request. The message names the segment."""
+
+
+def entry_for(cache: Dict[str, Any], index: int, segment: Dict[str, Any]) -> Dict[str, Any]:
+    """The cached pass-1 entry for a segment, joined with its title and key words from segments.json."""
+    entry = cache.get(str(index))
+    if not entry or not Path(entry["pass1"]).exists():
+        raise PipelineError(f"segment {index}: no cached pass 1; run render without --recompose")
+    if (entry["start_time"], entry["end_time"]) != (segment["start_time"], segment["end_time"]):
+        raise PipelineError(
+            f"segment {index}: start or end time changed since pass 1; run render without --recompose")
+    return dict(entry, hook_title=segment.get("hook_title"), key_words=segment.get("key_words") or [])
+
+
+def check_entries(cache: Dict[str, Any], indexes: Sequence[int], segments: Sequence[Dict[str, Any]]) -> None:
+    """Validate every cached entry up front so a bad one cannot stop the run half way."""
+    errors = []
+    for i in indexes:
+        try:
+            entry_for(cache, i, segments[i - 1])
+        except PipelineError as exc:
+            errors.append(str(exc))
+    if errors:
+        raise PipelineError("\n".join(errors))
+
+
+def compose_all(
+    indexes: Sequence[int],
+    segments: Sequence[Dict[str, Any]],
+    styles: Sequence[Dict[str, Any]],
+    cache: Dict[str, Any],
+    library: Sequence[Dict[str, Any]],
+    out_dir: Path,
+    workdir: Path,
+    compose_one: Callable[..., Dict[str, Any]],
+    previous: Sequence[Dict[str, Any]],
+    log: Callable[..., None] = print,
+):
+    """Run pass 2 for each selected segment. One clip failing never stops the others.
+
+    ``compose_one(i, segment, style, entry, library, part_path, workdir)`` renders to ``part_path``
+    and returns ``{"plan": MixPlan}``. The output manifest and credits.txt are written in a
+    ``finally`` so clips already finished are always listed. Returns (fresh entries, failed indexes).
+    """
+    out_dir = Path(out_dir)
+    fresh: List[Dict[str, Any]] = []
+    failed: List[int] = []
+    try:
+        for i in indexes:
+            segment, st = segments[i - 1], styles[i - 1]
+            dest = out_dir / clip_filename(i, segment)
+            part = dest.with_name(dest.stem + ".part.mp4")
+            try:
+                entry = entry_for(cache, i, segment)
+                done = compose_one(i, segment, st, entry, library, part, workdir)
+            except Exception as exc:  # any failure in this clip, not only ffmpeg's
+                log(f"segment {i} failed ({type(exc).__name__}): {exc}", file=sys.stderr)
+                part.unlink(missing_ok=True)
+                failed.append(i)
+                continue
+            replace_output(part, dest, i)
+            title = (segment.get("hook_title") or "").strip()
+            fresh.append({"file": str(dest), "hook_title": title, "duration": entry["duration"],
+                          "profile": (segment.get("style") or {}).get("profile"),
+                          "credits": credits([done["plan"]], library)})
+            log(f"{dest}  {entry['duration']:.1f}s  {title}")
+            log(f"    sounds: {describe_plan(done['plan'])}")
+    finally:
+        replaced = {int(Path(m["file"]).name[:2]) for m in fresh}
+        kept = [m for m in previous if int(Path(m["file"]).name[:2]) not in replaced]
+        manifest = sorted(kept + fresh, key=lambda m: Path(m["file"]).name)
+        (out_dir / "manifest.json").write_text(json.dumps(manifest, indent=2))
+        lines = sorted({line for m in manifest for line in m.get("credits", [])})
+        (out_dir / "credits.txt").write_text("\n".join(lines) + ("\n" if lines else ""))
+    return fresh, failed
 
 
 def describe_plan(plan: MixPlan) -> str:

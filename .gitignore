@@ -9,3 +9,6 @@ vendor/
 # sounds: generated and downloaded audio stays out of git; the empty library template is committed
 sounds/*
 !sounds/library.json
+
+__pycache__/
+*.pyc

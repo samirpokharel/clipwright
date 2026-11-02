@@ -149,6 +149,73 @@ class LibraryTest(unittest.TestCase):
         self.assertEqual({e["kind"] for e in lib}, {"whoosh", "pop", "sting", "outro", "music"})
 
 
+class AddOwnFileTest(unittest.TestCase):
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.root = Path(self.tmp.name)
+        self.sounds = self.root / "sounds"
+        self.src = self.root / "incoming"
+        self.src.mkdir()
+
+    def tearDown(self):
+        self.tmp.cleanup()
+
+    def track(self, name="calm.mp3", data=b"AUDIO-1"):
+        path = self.src / name
+        path.write_bytes(data)
+        return path
+
+    def library(self):
+        path = self.sounds / "library.json"
+        return json.loads(path.read_text()) if path.exists() else []
+
+    def test_add_copies_file_and_records_licence(self):
+        entry = sounds.add_own_file(self.sounds, self.track(), "music", "CC-BY", "alice")
+        self.assertEqual(entry["id"], "own-calm")
+        self.assertEqual(entry["file"], "music/calm.mp3")
+        self.assertEqual((self.sounds / "music" / "calm.mp3").read_bytes(), b"AUDIO-1")
+        self.assertEqual(self.library()[0]["license"], "CC-BY")
+        self.assertIn("attribution", sounds.load_library(self.sounds)[-1])
+
+    def test_effect_kinds_go_to_fx_folder(self):
+        entry = sounds.add_own_file(self.sounds, self.track("hit.wav"), "pop", "own")
+        self.assertEqual(entry["file"], "fx/hit.wav")
+
+    def test_duplicate_is_refused_and_the_existing_file_survives(self):
+        sounds.add_own_file(self.sounds, self.track("calm.mp3", b"FIRST"), "music", "own")
+        other = self.root / "elsewhere"
+        other.mkdir()
+        (other / "calm.mp3").write_bytes(b"SECOND")
+        with self.assertRaises(SoundError) as cm:
+            sounds.add_own_file(self.sounds, other / "calm.mp3", "music", "own")
+        self.assertIn("own-calm", str(cm.exception))
+        self.assertEqual((self.sounds / "music" / "calm.mp3").read_bytes(), b"FIRST")
+        self.assertEqual(len(self.library()), 1)
+        sounds.load_library(self.sounds)  # the library still loads, so renders keep working
+
+    def test_licence_is_required(self):
+        with self.assertRaises(SoundError) as cm:
+            sounds.add_own_file(self.sounds, self.track(), "music", None)
+        self.assertIn("licence", str(cm.exception))
+        self.assertFalse((self.sounds / "music" / "calm.mp3").exists())
+
+    def test_disallowed_licence_refused_and_nothing_written(self):
+        with self.assertRaises(SoundError) as cm:
+            sounds.add_own_file(self.sounds, self.track(), "music", "CC-BY-NC")
+        self.assertIn("CC-BY-NC", str(cm.exception))
+        self.assertFalse((self.sounds / "music" / "calm.mp3").exists())
+        self.assertEqual(self.library(), [])
+
+    def test_cc_by_without_author_refused_and_nothing_written(self):
+        with self.assertRaises(SoundError):
+            sounds.add_own_file(self.sounds, self.track(), "music", "CC-BY")
+        self.assertFalse((self.sounds / "music" / "calm.mp3").exists())
+
+    def test_missing_source_file_refused(self):
+        with self.assertRaises(SoundError):
+            sounds.add_own_file(self.sounds, self.src / "nope.mp3", "music", "own")
+
+
 @unittest.skipUnless(shutil.which("ffmpeg"), "ffmpeg not installed")
 class FfmpegTest(unittest.TestCase):
     def test_ensure_synth_writes_files_with_expected_durations(self):

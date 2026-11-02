@@ -6,6 +6,7 @@ load_library) needs no ffmpeg; ensure_synth and detect_shot_changes call ffmpeg.
 
 import json
 import re
+import shutil
 import subprocess
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -117,6 +118,49 @@ def load_library(sounds_dir: Path, *, ensure: bool = False) -> List[Dict[str, An
             raise SoundError("library.json must be a list of entries")
     seen = {e["id"] for e in SYNTH_ENTRIES}
     return [dict(e) for e in SYNTH_ENTRIES] + [_validate_entry(e, sounds_dir, seen) for e in raw]
+
+
+def add_own_file(sounds_dir: Path, src: Path, kind: str, license_: Optional[str],
+                 author: Optional[str] = None) -> Dict[str, Any]:
+    """Copy an owner-supplied file into the library and record its licence.
+
+    Everything is validated before anything is written. An id or destination that already
+    exists is refused, so an earlier entry's file is never overwritten or deleted.
+    """
+    sounds_dir, src = Path(sounds_dir), Path(src)
+    if not src.is_file():
+        raise SoundError(f"file not found: {src}")
+    if kind not in KINDS:
+        raise SoundError(f"kind {kind!r} must be one of {', '.join(KINDS)}")
+    if not license_:
+        raise SoundError("a licence is required (--license own, CC0 or CC-BY): refusing to guess")
+    if license_ not in LICENSES or license_ == "none":
+        raise SoundError(f"licence {license_!r} is not allowed (allowed: own, CC0, CC-BY)")
+    if license_ == "CC-BY" and not author:
+        raise SoundError("CC-BY needs --author")
+
+    folder = "music" if kind == "music" else "fx"
+    relative = f"{folder}/{src.name}"
+    entry_id = f"own-{src.stem}"
+    library_path = sounds_dir / "library.json"
+    before = library_path.read_text() if library_path.exists() else "[]"
+    existing = json.loads(before)
+    if any(e.get("id") == entry_id for e in existing) or (sounds_dir / relative).exists():
+        raise SoundError(f"library entry {entry_id!r} already exists (or {relative} is taken); "
+                         "rename the file or remove the old entry first")
+
+    entry = {"id": entry_id, "kind": kind, "file": relative, "source": "own", "license": license_,
+             "author": author, "url": None}
+    dest = sounds_dir / relative
+    dest.parent.mkdir(parents=True, exist_ok=True)
+    shutil.copy2(src, dest)
+    library_path.write_text(json.dumps(existing + [entry], indent=2) + "\n")
+    try:
+        return next(e for e in load_library(sounds_dir) if e["id"] == entry_id)
+    except Exception:
+        library_path.write_text(before)
+        dest.unlink()
+        raise
 
 
 def _pick(library: Sequence[Dict[str, Any]], kind: str, clip_index: int) -> Optional[Dict[str, Any]]:

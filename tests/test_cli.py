@@ -95,6 +95,16 @@ class HelpersTest(unittest.TestCase):
     def test_clip_filename(self):
         self.assertEqual(pipeline.clip_filename(2, seg(start_time="03:42", end_time="04:28")), "02_clip_0342-0428.mp4")
 
+    def test_safe_job_id_replaces_characters_that_break_ffmpeg_filters(self):
+        self.assertEqual(pipeline.safe_job_id("Rick's talk, part [1];x:y"), "Rick_s_talk_part_1_x_y")
+
+    def test_safe_job_id_keeps_youtube_ids(self):
+        for vid in ("aMoVyJ9_M24", "nEaJ-Md_djM"):
+            self.assertEqual(pipeline.safe_job_id(vid), vid)
+
+    def test_safe_job_id_is_never_empty(self):
+        self.assertEqual(pipeline.safe_job_id("'';;"), "job")
+
     def test_describe_plan_summarises_sounds(self):
         from clipwright import sounds
         ev = sounds.Event
@@ -142,3 +152,130 @@ class HelpersTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class Pass2LoopTest(unittest.TestCase):
+    """The pass 2 loop: failure isolation, early validation, manifest and credits always written."""
+
+    def setUp(self):
+        import tempfile
+        self.tmp = tempfile.TemporaryDirectory()
+        self.root = Path(self.tmp.name)
+        self.out = self.root / "out"
+        self.out.mkdir()
+        self.work = self.root / "work"
+        self.work.mkdir()
+        self.segments = [seg(start_time="00:00", end_time="00:10", hook_title="One"),
+                         seg(start_time="00:20", end_time="00:30", hook_title="Two"),
+                         seg(start_time="00:40", end_time="00:50", hook_title="Three")]
+        self.cache = {}
+        for i, s in enumerate(self.segments, 1):
+            p1 = self.root / f"{i:02d}.mp4"
+            p1.write_bytes(b"pass1")
+            self.cache[str(i)] = {"pass1": str(p1), "source": "s.mp4", "keep_ranges": [[0, 10]], "duration": 10.0,
+                                  "start_time": s["start_time"], "end_time": s["end_time"]}
+        self.library = [{"id": "fs-1", "kind": "music", "file": "music/fs-1.mp3", "source": "freesound",
+                         "license": "CC-BY", "author": "alice", "attribution": "Calm by alice (CC BY)", "url": None}]
+
+    def tearDown(self):
+        self.tmp.cleanup()
+
+    def stub(self, fail_on=(), exc=ValueError("boom"), credit_on=()):
+        from clipwright import sounds
+        calls = []
+
+        def compose_one(i, segment, st, entry, library, part, workdir):
+            calls.append(i)
+            if i in fail_on:
+                raise exc
+            part.write_bytes(f"clip{i}".encode())
+            music = {"id": "fs-1", "file": "music/fs-1.mp3", "gain_db": -26.0} if i in credit_on else None
+            return {"plan": sounds.MixPlan(music=music)}
+
+        compose_one.calls = calls
+        return compose_one
+
+    def run_loop(self, compose_one, indexes=(1, 2, 3), previous=()):
+        return pipeline.compose_all(list(indexes), self.segments, [None] * 3, self.cache, self.library,
+                                    self.out, self.work, compose_one, list(previous), log=lambda *a, **k: None)
+
+    def manifest(self):
+        return json.loads((self.out / "manifest.json").read_text())
+
+    def test_one_failing_clip_does_not_stop_the_others(self):
+        fresh, failed = self.run_loop(self.stub(fail_on={2}, exc=ValueError("bad caption data")))
+        self.assertEqual(failed, [2])
+        self.assertEqual([Path(m["file"]).name[:2] for m in self.manifest()], ["01", "03"])
+        self.assertTrue((self.out / "01_clip_0000-0010.mp4").exists())
+        self.assertTrue((self.out / "03_clip_0040-0050.mp4").exists())
+        self.assertTrue((self.out / "credits.txt").exists())
+        self.assertEqual(list(self.out.glob("*.part.mp4")), [])  # no half-written files left behind
+
+    def test_failure_keeps_the_previous_render_of_that_segment(self):
+        old = self.out / "02_clip_0020-0030.mp4"
+        old.write_bytes(b"previous good render")
+        previous = [{"file": str(old), "hook_title": "Two", "duration": 10.0, "credits": []}]
+        _, failed = self.run_loop(self.stub(fail_on={2}), indexes=(2,), previous=previous)
+        self.assertEqual(failed, [2])
+        self.assertEqual(old.read_bytes(), b"previous good render")
+        self.assertEqual([Path(m["file"]).name for m in self.manifest()], [old.name])
+
+    def test_manifest_is_written_even_when_the_run_is_interrupted(self):
+        with self.assertRaises(KeyboardInterrupt):
+            self.run_loop(self.stub(fail_on={2}, exc=KeyboardInterrupt()))
+        self.assertEqual([Path(m["file"]).name[:2] for m in self.manifest()], ["01"])
+
+    def test_entries_for_other_segments_are_kept(self):
+        kept = self.out / "03_clip_0040-0050.mp4"
+        kept.write_bytes(b"x")
+        previous = [{"file": str(kept), "hook_title": "Three", "duration": 10.0, "credits": ["Old credit"]}]
+        self.run_loop(self.stub(), indexes=(1,), previous=previous)
+        self.assertEqual([Path(m["file"]).name[:2] for m in self.manifest()], ["01", "03"])
+        self.assertIn("Old credit", (self.out / "credits.txt").read_text())
+
+    def test_credits_list_cc_by_sounds_used(self):
+        self.run_loop(self.stub(credit_on={1}))
+        self.assertIn("Calm by alice (CC BY)", (self.out / "credits.txt").read_text())
+
+    def test_credits_file_empty_when_nothing_to_credit(self):
+        self.run_loop(self.stub())
+        self.assertEqual((self.out / "credits.txt").read_text(), "")
+
+
+class CacheEntryTest(unittest.TestCase):
+    def setUp(self):
+        import tempfile
+        self.tmp = tempfile.TemporaryDirectory()
+        p1 = Path(self.tmp.name) / "01.mp4"
+        p1.write_bytes(b"x")
+        self.seg = seg(start_time="00:00", end_time="00:10", hook_title="One", key_words=["a b"])
+        self.cache = {"1": {"pass1": str(p1), "start_time": "00:00", "end_time": "00:10", "duration": 10.0}}
+
+    def tearDown(self):
+        self.tmp.cleanup()
+
+    def test_entry_for_adds_title_and_key_words_from_the_segment(self):
+        entry = pipeline.entry_for(self.cache, 1, self.seg)
+        self.assertEqual(entry["hook_title"], "One")
+        self.assertEqual(entry["key_words"], ["a b"])
+
+    def test_missing_cache_entry_names_the_segment(self):
+        with self.assertRaises(pipeline.PipelineError) as cm:
+            pipeline.entry_for({}, 1, self.seg)
+        self.assertIn("segment 1", str(cm.exception))
+        self.assertIn("--recompose", str(cm.exception))
+
+    def test_changed_times_name_the_segment(self):
+        with self.assertRaises(pipeline.PipelineError) as cm:
+            pipeline.entry_for(self.cache, 1, dict(self.seg, end_time="00:20"))
+        self.assertIn("changed", str(cm.exception))
+
+    def test_check_entries_reports_every_problem_before_any_render(self):
+        segments = [self.seg, seg(start_time="00:20", end_time="00:30"), dict(self.seg, end_time="00:99")]
+        cache = {"1": self.cache["1"], "3": self.cache["1"]}
+        with self.assertRaises(pipeline.PipelineError) as cm:
+            pipeline.check_entries(cache, [1, 2, 3], segments)
+        message = str(cm.exception)
+        self.assertIn("segment 2", message)
+        self.assertIn("segment 3", message)
+        self.assertNotIn("segment 1:", message)

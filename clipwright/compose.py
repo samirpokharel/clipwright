@@ -280,33 +280,54 @@ def analyze_clip(entry: Dict[str, Any]) -> Dict[str, Any]:
     return {"pops": sorted(t for t, _ in matches), "shots": shots, "unmatched": unmatched}
 
 
+def build_caption_ass(entry: Dict[str, Any], style: Dict[str, Any], workdir: Path,
+                      width: int, height: int) -> Optional[Path]:
+    """Word-synced caption ASS for one clip, or None when no word timings exist.
+
+    Key words are passed as exact word positions (``emphasis_indices``), not as
+    ``highlight_words``: SupoClip's token matcher never matches a multi-word phrase, and it
+    would light up every occurrence of a short word. Without key words SupoClip's own
+    automatic emphasis applies. Needs SupoClip, so it runs inside the container.
+    """
+    from src.caption_templates import CAPTION_TEMPLATES
+    from src.media.captions import build_assemblyai_ass_subtitles
+    from src.media.timeline import get_words_for_keep_ranges
+    from src.media.transcription import load_cached_transcript_data
+
+    workdir.mkdir(parents=True, exist_ok=True)
+    source = Path(entry["source"])
+    ranges = [(float(a), float(b)) for a, b in entry["keep_ranges"]]
+    tpl = caption_template(style, CAPTION_TEMPLATES["default"])
+    words = get_words_for_keep_ranges(load_cached_transcript_data(source) or {}, ranges)
+    indices, _ = timing.phrase_indices(words, entry.get("key_words") or [])  # unmatched are reported by analyze_clip
+    out = workdir / f"{Path(entry['pass1']).stem}.captions.ass"
+    built = build_assemblyai_ass_subtitles(
+        video_path=source, clip_start=min(a for a, _ in ranges), clip_end=max(b for _, b in ranges),
+        video_width=width, video_height=height, output_ass_path=out,
+        font_family=tpl["font_family"], caption_template="default", keep_ranges=ranges,
+        hook_title=None, include_captions=True, position_y_override=style["caption"]["position_y"],
+        emphasis_indices=indices, template_override=tpl,
+        font_px_override=CAPTION_PX[style["caption"]["size"]],
+    )
+    return out if built else None
+
+
 def compose_clip(entry: Dict[str, Any], style: Dict[str, Any], mix: sounds.MixPlan, out: Path,
                  workdir: Path, sounds_dir: Path, *, voice: bool = True, captions: bool = True) -> None:
     """Render one clip's pass 2. Raises RuntimeError with ffmpeg's last lines on failure."""
-    from src.caption_templates import CAPTION_TEMPLATES
-    from src.media.captions import ass_font_name, ass_fonts_dir, build_assemblyai_ass_subtitles
+    from src.media.captions import ass_font_name, ass_fonts_dir
 
     workdir.mkdir(parents=True, exist_ok=True)
     pass1 = Path(entry["pass1"])
-    source = Path(entry["source"])
-    ranges = [(float(a), float(b)) for a, b in entry["keep_ranges"]]
     duration = float(entry["duration"])
     ident = style["identity"]
     width, height = _video_size(pass1)
 
-    tpl = caption_template(style, CAPTION_TEMPLATES["default"])
-    caption_ass = workdir / f"{pass1.stem}.captions.ass"
     ass_files: List[Path] = []
-    built = captions and build_assemblyai_ass_subtitles(
-        video_path=source, clip_start=min(a for a, _ in ranges), clip_end=max(b for _, b in ranges),
-        video_width=width, video_height=height, output_ass_path=caption_ass,
-        font_family=tpl["font_family"], caption_template="default", keep_ranges=ranges,
-        hook_title=None, include_captions=True, position_y_override=style["caption"]["position_y"],
-        highlight_words=entry.get("key_words") or None, template_override=tpl,
-        font_px_override=CAPTION_PX[style["caption"]["size"]],
-    )
-    if built:
-        ass_files.append(caption_ass)
+    if captions:
+        caption_ass = build_caption_ass(entry, style, workdir, width, height)
+        if caption_ass:
+            ass_files.append(caption_ass)
 
     title_file = workdir / f"{pass1.stem}.title.ass"
     title_file.write_text(title_ass(entry.get("hook_title") or "", style, duration,
