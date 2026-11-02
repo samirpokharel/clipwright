@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Runs clip.py inside the supoclip-backend image. See README.md.
+# Runs clip.py inside the clipwright-runtime image (supoclip-backend plus faster-whisper). See README.md.
 set -euo pipefail
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
@@ -11,8 +11,9 @@ if ! docker info >/dev/null 2>&1; then
   echo "Cannot reach the Docker daemon. Start Docker (or rootless dockerd) and retry." >&2
   exit 1
 fi
-if ! docker image inspect supoclip-backend:latest >/dev/null 2>&1; then
-  echo "Image supoclip-backend:latest not found. Run ./setup.sh first." >&2
+IMAGE=clipwright-runtime:latest
+if ! docker image inspect "$IMAGE" >/dev/null 2>&1; then
+  echo "Image $IMAGE not found. Run ./setup.sh first." >&2
   exit 1
 fi
 mkdir -p "$HERE"/{tmp,cache,jobs,out}
@@ -20,6 +21,7 @@ mkdir -p "$HERE"/{tmp,cache,jobs,out}
 exec docker run --rm \
   -e TRANSCRIPTION_PROVIDER=whisper \
   -e WHISPER_MODEL_SIZE="${WHISPER_MODEL_SIZE:-small}" \
+  ${WHISPER_BACKEND:+-e WHISPER_BACKEND} \
   -e TEMP_DIR=/work/tmp \
   -e XDG_CACHE_HOME=/work/cache \
   -e HOME=/work/cache \
@@ -28,4 +30,4 @@ exec docker run --rm \
   -v "$HERE":/work \
   -v "$HERE/clip.py":/app/clip.py:ro \
   -w /app \
-  supoclip-backend:latest .venv/bin/python /app/clip.py "$@"
+  "$IMAGE" .venv/bin/python /app/clip.py "$@"

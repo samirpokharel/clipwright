@@ -20,6 +20,9 @@ echo "Building supoclip-backend (CPU-only torch, several GB, can take 10+ minute
 docker build --platform linux/amd64 --build-arg BACKEND_CPU_ONLY=true \
   -t supoclip-backend:latest "$HERE/vendor/supoclip/backend"
 
+echo "Adding faster-whisper (clipwright-runtime image, a minute)..."
+docker build -f "$HERE/Dockerfile.runtime" -t clipwright-runtime:latest "$HERE"
+
 # Install the Claude Code skill, pointing it at this checkout.
 if [ -d "$HOME/.claude" ]; then
   mkdir -p "$HOME/.claude/skills/supoclip"

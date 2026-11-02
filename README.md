@@ -8,7 +8,7 @@ Pass 1 (SupoClip) cuts and frames each clip. Pass 2 (Clipwright) adds your brand
 
 ```
 you: "clip this <url>"
-  1. clip fetch    yt-dlp download + Whisper transcript + video metadata     (container)
+  1. clip fetch    yt-dlp download + faster-whisper transcript + metadata    (container)
   2. Claude Code   reads transcript and metadata, writes segments.json       (judgement)
                    per clip: key words, a profile, small style overrides
   3. pass 1        SupoClip: cut, sentence snapping, 9:16 framing            (container)
@@ -24,7 +24,8 @@ you: "clip this <url>"
 ## Setup
 ```bash
 git clone https://github.com/polymorphisma/clipwright && cd clipwright
-./setup.sh        # builds the backend image from a pinned upstream commit, installs the skill
+./setup.sh        # builds the backend image from a pinned upstream commit, adds faster-whisper
+                  # (the clipwright-runtime image), installs the skill
 ```
 
 ## Use
@@ -37,7 +38,7 @@ By hand:
 ./clip render <id> /work/jobs/<id>/segments.json --exact
 ```
 Local files must live inside this folder (it is mounted as `/work`).
-`WHISPER_MODEL_SIZE=base|small|medium` trades speed for accuracy (default `small`).
+`WHISPER_MODEL_SIZE=base|small|medium` trades speed for accuracy (default `small`). `WHISPER_BACKEND=auto|faster|openai` picks the transcriber: `auto` (the default) uses faster-whisper, and `openai` falls back to SupoClip's original openai-whisper. The first run downloads the model (about 460 MB for `small`) into `cache/`.
 
 ### Commands
 | Command | What it does |
@@ -81,14 +82,14 @@ Per clip, as each sound's level (`off`, `low`, `normal`) allows: a music bed tha
 ## Measured runs (2026-11-02)
 Hardware: Ryzen 5 5500U laptop (6 cores, 12 threads, 30 GB RAM, no GPU). One run each, so treat these as a rough guide.
 
-Fetch and transcribe, 15 minute video:
+Transcription, 5 min 25 s of audio (same laptop, `small` model):
 
-| Stage | Time | Notes |
-|---|---|---|
-| Download + cap to 1080p | 52 s | 131.5 MB source |
-| Whisper `small` transcription | 15 min 41 s | 1.04x real time, about 640% CPU, 1.8 GB RAM |
+| Backend | Time | Speed | Words |
+|---|---|---|---|
+| openai-whisper (`WHISPER_BACKEND=openai`) | 298 s | 0.92x real time | 1151 |
+| faster-whisper int8 (the default) | 161 s | 2.02x real time | 1152 |
 
-Whisper is the bottleneck. A 5 minute video transcribed at 0.92x real time.
+The whole `clip fetch` of a local copy of that video (no download) took 164 s and produced 1153 words. For comparison, the first fetch of a 15 minute video with openai-whisper took 52 s to download and 15 min 41 s to transcribe (1.04x real time, about 640% CPU, 1.8 GB RAM); faster-whisper should take about half that, extrapolated and not measured on a 15 minute video. faster-whisper writes shorter segments (130 transcript lines against 82 for the same video), so `transcript.txt` is longer but finer-grained.
 
 Stage 1 render, one 18 second clip:
 
@@ -110,12 +111,12 @@ Cost: no API fees. It uses your Claude Code usage for the selection step only.
 ## Tests
 ```bash
 python3 -m unittest discover -s tests -t .   # host: style, timing, sounds, layout, compose arguments, CLI, ducking
-bash tests/container.sh                       # in the image: real pass 1 then pass 2, key-phrase highlights, multi-range timing, fill/fit layouts
+bash tests/container.sh                       # in the image: real pass 1 then pass 2, key-phrase highlights, multi-range timing, fill/fit layouts, faster-whisper
 ```
 The container tests need two cached jobs: `jNQXAC9IVRw` (render tests) and `aMoVyJ9_M24` (layout tests). Fetch each once with `clip fetch https://www.youtube.com/watch?v=<id>`.
 
 ## Limits
-- CPU Whisper is the bottleneck. A one-hour video can take over an hour to transcribe. A benchmark of faster-whisper (`small`, int8, same CPU) transcribed the same 5 minute audio in 161 s (2.0x real time) against 298 s (0.9x) for openai-whisper, with the same word count (1152 against 1151). It is measured but not wired in. A Google Colab GPU would likely be faster still; that is not measured here, and it would send the audio to Google, so it is not for client or office material.
+- CPU transcription is still the bottleneck: about 2x real time with faster-whisper, so a one-hour video takes about half an hour (extrapolated). A Google Colab GPU would likely be faster still; that is not measured here, it needs manual upload and download steps, and it would send the audio to Google, so it is not for client or office material.
 - Whisper misspells names, and the captions copy the transcript spelling.
 - No editor and no accounts. To change a clip, edit `segments.json` and run `clip render --recompose`.
 - The transcript text and extracted frames go to Claude through your Claude Code session.

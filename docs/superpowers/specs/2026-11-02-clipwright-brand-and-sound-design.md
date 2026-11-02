@@ -328,6 +328,20 @@ Stage 1 left the framing to SupoClip. Stage 2 lets Claude Code choose per clip, 
 - Tracking quality depends on SupoClip's detector, which found 11 to 131 detections per clip. The median needs only a few.
 - Not built: a designed card layout, push-in motion, and per-shot automatic classification.
 
-## 13. Licensing and responsibility
+## 13. Transcription backend (added 2026-11-02)
+
+Whisper on CPU was about 75% of the time to clip a video (0.92x real time). `clip fetch` now picks a backend with `WHISPER_BACKEND`:
+
+- `auto` (default): faster-whisper when installed, else SupoClip's openai-whisper.
+- `faster`: faster-whisper (CTranslate2, int8, CPU), with word timestamps. An error says to run `./setup.sh` if it is missing.
+- `openai`: the original path through SupoClip, unchanged.
+
+faster-whisper lives in a thin derived image, `clipwright-runtime` (`Dockerfile.runtime`: the pinned `supoclip-backend` image plus `uv pip install faster-whisper`), which `setup.sh` builds and `clip` runs. Audio is decoded by ffmpeg to 16 kHz mono and passed to the model as an array, so PyAV is not used for decoding. The result is converted to a Whisper-style dict (`clipwright/transcribe.py`), which SupoClip's own `format_transcript_for_analysis` and `cache_transcript_data` already accept, so the cache, captions and everything after `fetch` are unchanged.
+
+**Measured** (same laptop, `small` model, 5 min 25 s of audio): openai-whisper 298 s (0.92x real time, 1151 words); faster-whisper 161 s (2.02x, 1152 words). A full `clip fetch` of a local copy took 164 s and produced 1153 words. Word times agree with the openai-whisper reference within 0.5 s on the 19 s test clip (in practice exactly: "trunks" at 10.38 s and "elephants" at 2.70 s in both). faster-whisper writes shorter segments, so the transcript has about 1.6 times as many lines.
+
+**Not measured:** a 15 minute video with faster-whisper (extrapolated to about half the openai-whisper time), larger models, and a Google Colab GPU. Colab would need manual upload and download steps, YouTube often blocks its IPs so the download must stay local, and it would send the audio to Google, so it must not be used for client or office material.
+
+## 14. Licensing and responsibility
 
 This repository is AGPL-3.0 because it imports SupoClip's AGPL-3.0 code. Clips made from other people's videos remain those creators' footage, and the owner is responsible for permission to publish them. Music and sounds are the owner's responsibility: the tools record licences and refuse the wrong ones, but do not decide fair use or platform policy.

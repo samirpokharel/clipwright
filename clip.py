@@ -21,7 +21,7 @@ import sys
 from pathlib import Path
 from typing import Any, Dict, List
 
-from clipwright import compose, freesound, layout, pipeline, render_layout, sounds, style
+from clipwright import compose, freesound, layout, pipeline, render_layout, sounds, style, transcribe
 from clipwright.sounds import SoundError
 from clipwright.style import StyleError
 
@@ -66,6 +66,22 @@ def _metadata(url: str) -> Dict[str, Any]:
         return {}
 
 
+async def _transcribe(video_path: Path, url) -> str:
+    """Timestamped transcript text, with word timings cached for captions. Backend per WHISPER_BACKEND."""
+    from src.media.transcription import cache_transcript_data, format_transcript_for_analysis
+    from src.services.video_service import VideoService
+
+    backend = transcribe.pick_backend(os.environ.get("WHISPER_BACKEND"), transcribe.faster_available())
+    size = os.environ.get("WHISPER_MODEL_SIZE", "small")
+    print(f"transcribing with {backend}-whisper ({size})", file=sys.stderr)
+    if backend == "openai":
+        return await VideoService.generate_transcript(video_path, source_url=url)
+    language = (os.environ.get("TRANSCRIPTION_LANGUAGE") or "").split("_")[0] or None  # "en_us" -> "en"
+    result = await asyncio.to_thread(transcribe.transcribe_faster, video_path, size, language)
+    cache_transcript_data(video_path, result)
+    return "\n".join(format_transcript_for_analysis(result))
+
+
 async def fetch(args) -> None:
     from src.media.transcription import load_cached_transcript_data
     from src.services.video_service import VideoService
@@ -88,7 +104,7 @@ async def fetch(args) -> None:
         meta = _metadata(source)
 
     video_path = await VideoService.prepare_source(Path(video_path))
-    transcript = await VideoService.generate_transcript(Path(video_path), source_url=url)
+    transcript = await _transcribe(Path(video_path), url)
 
     job_dir = _job_dir(job)
     job_dir.mkdir(parents=True, exist_ok=True)
@@ -333,7 +349,7 @@ def main() -> None:
             frames_command(args)
         else:
             asyncio.run({"fetch": fetch, "render": render, "brand-preview": brand_preview}[args.cmd](args))
-    except (StyleError, SoundError, pipeline.PipelineError, freesound.FreesoundError) as exc:
+    except (StyleError, SoundError, pipeline.PipelineError, freesound.FreesoundError, transcribe.TranscribeError) as exc:
         sys.exit(str(exc))
 
 

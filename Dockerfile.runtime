@@ -1,0 +1,3 @@
+# The pinned SupoClip backend image plus faster-whisper. Built by setup.sh as clipwright-runtime:latest.
+FROM supoclip-backend:latest
+RUN uv pip install --python /app/.venv/bin/python faster-whisper

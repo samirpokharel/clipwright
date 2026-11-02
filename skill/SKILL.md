@@ -16,7 +16,9 @@ progress bar and sound. No Docker stack, DB, or API key needed.
 2. **Fetch + transcribe** (slow on CPU; run in background for videos over ~10 min):
    `__CLIP_DIR__/clip fetch <youtube-url | /work/<file>>`
    Local files must sit under `__CLIP_DIR__/` (mounted as `/work`).
-   Env `WHISPER_MODEL_SIZE=base|small|medium` (default `small`). Prints `job=<id>`.
+   Env `WHISPER_MODEL_SIZE=base|small|medium` (default `small`) and `WHISPER_BACKEND=auto|faster|openai`
+   (default `auto` = faster-whisper, about 2x real time on CPU; `openai` is the slower original).
+   Prints `job=<id>`.
 3. **Read** `__CLIP_DIR__/jobs/<job>/transcript.txt` (lines like `[00:12 - 00:21] text`) and
    `jobs/<job>/state.json` (title, channel, description, categories, tags when available).
 4. **Choose clips and a style** for each (rules below). Run `clip profiles` and `clip schema` if you
@@ -145,7 +147,7 @@ Scores are 0-25 each, total is their sum (0-100). `key_words`, `source_music`, `
 
 ## Notes
 
-- First `fetch` downloads the Whisper model (~460 MB for `small`) into `cache/` in this folder.
+- First `fetch` downloads the Whisper model (~460 MB for `small`) into `cache/` in this folder. faster-whisper writes shorter transcript lines than openai-whisper (about 1.6x as many), which is fine for choosing cut points.
 - Names in captions come from Whisper's spelling and can be wrong.
 - Edit `clip.py` and `clipwright/` (bind-mounted, no rebuild) to change behaviour; the backend source
   is the upstream repo cloned by setup.sh into `__CLIP_DIR__/vendor/supoclip/` (AGPL-3.0).
