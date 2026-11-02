@@ -53,7 +53,11 @@ def phrase_indices(
     """
     if not key_words:
         return None, []
-    tokens = [_norm(word.get("text", "")) for word in words]
+    # Match on words that have letters or digits, exactly as match_key_words does, so a
+    # punctuation-only word (Whisper writes "10" and "%" separately) cannot make the two disagree.
+    kept = [(i, _norm(word.get("text", ""))) for i, word in enumerate(words)]
+    kept = [(i, token) for i, token in kept if token]
+    tokens = [token for _, token in kept]
     indices: List[int] = []
     unmatched: List[str] = []
     for key in key_words:
@@ -62,7 +66,8 @@ def phrase_indices(
         if start is None:
             unmatched.append(key)
         else:
-            indices.extend(range(start, start + len(phrase)))
+            first, last = kept[start][0], kept[start + len(phrase) - 1][0]
+            indices.extend(range(first, last + 1))  # includes any punctuation-only word in between
     return sorted(set(indices)), unmatched
 
 

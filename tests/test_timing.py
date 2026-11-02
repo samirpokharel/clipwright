@@ -103,6 +103,21 @@ class PhraseIndicesTest(unittest.TestCase):
         idx, _ = phrase_indices(self.words("Rick, RUBIN: said"), ["rick rubin"])
         self.assertEqual(idx, [0, 1])
 
+    def test_phrase_spans_a_punctuation_only_word(self):
+        # Whisper emits "10" and "%" as two words; the "%" has no letters or digits
+        words = self.words("greater than 10 % chance that AI")
+        idx, unmatched = phrase_indices(words, ["10% chance"])
+        self.assertEqual((idx, unmatched), ([2, 3, 4], []))  # the % is highlighted too
+
+    def test_pop_matcher_and_highlight_matcher_always_agree(self):
+        words = self.words("greater than 10 % chance that AI kills all humans")
+        keys = ["10% chance", "AI kills", "nine ten", "than 10"]
+        _, unmatched_highlight = phrase_indices(words, keys)
+        spoken = [dict(w_, start=int(i * 1000), end=int(i * 1000) + 400) for i, w_ in enumerate(words)]
+        _, unmatched_pop = match_key_words(spoken, keys, [(0.0, 100.0)])
+        self.assertEqual(unmatched_highlight, unmatched_pop)
+        self.assertEqual(unmatched_highlight, ["nine ten"])
+
     def test_no_key_words_gives_none_so_auto_emphasis_can_apply(self):
         self.assertEqual(phrase_indices(self.words("a b"), []), (None, []))
 
