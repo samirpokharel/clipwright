@@ -133,6 +133,29 @@ class BrandAndProfilesTest(unittest.TestCase):
         self.assertEqual(perf["title"]["size"], "large")
 
 
+class LayoutModeTest(unittest.TestCase):
+    def test_base_layout_mode_is_auto(self):
+        self.assertEqual(style.resolve_style(brand(), None, None, where="s")["layout"]["mode"], "auto")
+
+    def test_clip_can_choose_fill_or_fit(self):
+        for mode in ("fill", "fit", "auto"):
+            resolved = style.resolve_style(brand(), None, {"layout": {"mode": mode}}, where="segment 1")
+            self.assertEqual(resolved["layout"]["mode"], mode)
+
+    def test_unknown_layout_mode_names_the_field(self):
+        with self.assertRaises(StyleError) as cm:
+            style.resolve_style(brand(), None, {"layout": {"mode": "zoom"}}, where="segment 4")
+        self.assertIn("segment 4", str(cm.exception))
+        self.assertIn("layout.mode", str(cm.exception))
+
+    def test_interview_profile_fills_and_others_stay_auto(self):
+        b = brand()
+        profiles = style.list_profiles(ROOT / "profiles")
+        self.assertEqual(style.resolve_style(b, profiles["interview"]["style"], None, where="i")["layout"]["mode"], "fill")
+        for name in ("explainer", "performance", "tutorial"):
+            self.assertEqual(style.resolve_style(b, profiles[name]["style"], None, where=name)["layout"]["mode"], "auto")
+
+
 class SchemaTest(unittest.TestCase):
     def test_schema_lists_every_bound(self):
         s = style.schema()

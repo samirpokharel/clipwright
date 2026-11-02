@@ -6,9 +6,9 @@ import json
 import re
 import sys
 from pathlib import Path
-from typing import Any, Callable, Dict, List, Sequence, Tuple
+from typing import Any, Callable, Dict, List, Optional, Sequence, Tuple
 
-from . import style
+from . import layout, style
 from .sounds import KINDS, MixPlan, credits
 from .style import StyleError
 
@@ -87,6 +87,11 @@ def resolve_all(
             )
             for kind in disabled:
                 resolved["sound"][kind] = "off"
+            try:
+                bounds = (layout.parse_time(segment["start_time"]), layout.parse_time(segment["end_time"]))
+            except (KeyError, ValueError) as exc:
+                raise StyleError(f"{where}: start_time and end_time must be times: {exc}") from None
+            resolved["layout"]["ranges"] = layout.parse_ranges(segment.get("layout_ranges"), *bounds, where)
             styles.append(resolved)
         except StyleError as exc:
             errors.append(str(exc))
@@ -114,7 +119,14 @@ class PipelineError(ValueError):
     """The cached pass-1 state does not match the request. The message names the segment."""
 
 
-def entry_for(cache: Dict[str, Any], index: int, segment: Dict[str, Any]) -> Dict[str, Any]:
+def layout_signature(style_: Dict[str, Any]) -> Dict[str, Any]:
+    """The part of a resolved style that decides how pass 1 frames the clip."""
+    lay = style_["layout"]
+    return {"mode": lay["mode"], "ranges": [[s, e, k] for s, e, k in lay.get("ranges", [])]}
+
+
+def entry_for(cache: Dict[str, Any], index: int, segment: Dict[str, Any],
+              style_: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
     """The cached pass-1 entry for a segment, joined with its title and key words from segments.json."""
     entry = cache.get(str(index))
     if not entry or not Path(entry["pass1"]).exists():
@@ -122,15 +134,18 @@ def entry_for(cache: Dict[str, Any], index: int, segment: Dict[str, Any]) -> Dic
     if (entry["start_time"], entry["end_time"]) != (segment["start_time"], segment["end_time"]):
         raise PipelineError(
             f"segment {index}: start or end time changed since pass 1; run render without --recompose")
+    if style_ is not None and entry.get("layout", {"mode": "auto", "ranges": []}) != layout_signature(style_):
+        raise PipelineError(f"segment {index}: layout changed since pass 1; run render without --recompose")
     return dict(entry, hook_title=segment.get("hook_title"), key_words=segment.get("key_words") or [])
 
 
-def check_entries(cache: Dict[str, Any], indexes: Sequence[int], segments: Sequence[Dict[str, Any]]) -> None:
+def check_entries(cache: Dict[str, Any], indexes: Sequence[int], segments: Sequence[Dict[str, Any]],
+                  styles: Optional[Sequence[Dict[str, Any]]] = None) -> None:
     """Validate every cached entry up front so a bad one cannot stop the run half way."""
     errors = []
     for i in indexes:
         try:
-            entry_for(cache, i, segments[i - 1])
+            entry_for(cache, i, segments[i - 1], styles[i - 1] if styles else None)
         except PipelineError as exc:
             errors.append(str(exc))
     if errors:
@@ -164,7 +179,7 @@ def compose_all(
             dest = out_dir / clip_filename(i, segment)
             part = dest.with_name(dest.stem + ".part.mp4")
             try:
-                entry = entry_for(cache, i, segment)
+                entry = entry_for(cache, i, segment, st)
                 done = compose_one(i, segment, st, entry, library, part, workdir)
             except Exception as exc:  # any failure in this clip, not only ffmpeg's
                 log(f"segment {i} failed ({type(exc).__name__}): {exc}", file=sys.stderr)

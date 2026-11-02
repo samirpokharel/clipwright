@@ -77,6 +77,29 @@ class ResolveAllTest(unittest.TestCase):
         self.assertIn("title.seconds", message)
         self.assertNotIn("segment 1:", message)
 
+    def test_layout_ranges_are_parsed_into_the_resolved_style(self):
+        ranges = [{"from": "00:20", "to": "00:30", "layout": "fit"}]
+        styles = self.resolve([seg(layout_ranges=ranges, style={"layout": {"mode": "fill"}})])
+        self.assertEqual(styles[0]["layout"]["mode"], "fill")
+        self.assertEqual(styles[0]["layout"]["ranges"], [(20.0, 30.0, "fit")])
+
+    def test_segment_without_layout_ranges_gets_an_empty_list(self):
+        self.assertEqual(self.resolve([seg()])[0]["layout"]["ranges"], [])
+
+    def test_bad_layout_range_is_reported_with_the_segment_number_alongside_style_errors(self):
+        segments = [seg(), seg(layout_ranges=[{"from": "00:20", "to": "09:00", "layout": "fit"}]),
+                    seg(style={"title": {"seconds": 99}})]
+        with self.assertRaises(StyleError) as cm:
+            self.resolve(segments)
+        message = str(cm.exception)
+        self.assertIn("segment 2: layout_ranges[0]", message)
+        self.assertIn("segment 3", message)
+
+    def test_unparseable_segment_time_is_a_clear_error(self):
+        with self.assertRaises(StyleError) as cm:
+            self.resolve([seg(start_time="soon", layout_ranges=[{"from": "00:20", "to": "00:30", "layout": "fit"}])])
+        self.assertIn("segment 1", str(cm.exception))
+
     def test_no_music_flag_overrides_style(self):
         styles = self.resolve([seg(), seg(style={"profile": "explainer"})], disabled=("music", "pop"))
         for st in styles:
@@ -269,6 +292,30 @@ class CacheEntryTest(unittest.TestCase):
         with self.assertRaises(pipeline.PipelineError) as cm:
             pipeline.entry_for(self.cache, 1, dict(self.seg, end_time="00:20"))
         self.assertIn("changed", str(cm.exception))
+
+    def layout_style(self, mode="auto", ranges=()):
+        return {"layout": {"mode": mode, "ranges": list(ranges)}}
+
+    def test_signature_describes_mode_and_ranges(self):
+        sig = pipeline.layout_signature(self.layout_style("fill", [(310.0, 320.0, "fit")]))
+        self.assertEqual(sig, {"mode": "fill", "ranges": [[310.0, 320.0, "fit"]]})
+
+    def test_changed_layout_requires_a_new_pass_1(self):
+        self.cache["1"]["layout"] = pipeline.layout_signature(self.layout_style("auto"))
+        with self.assertRaises(pipeline.PipelineError) as cm:
+            pipeline.entry_for(self.cache, 1, self.seg, self.layout_style("fill"))
+        self.assertIn("layout changed", str(cm.exception))
+        self.assertIn("segment 1", str(cm.exception))
+
+    def test_unchanged_layout_is_accepted(self):
+        self.cache["1"]["layout"] = pipeline.layout_signature(self.layout_style("fill", [(1.0, 2.0, "fit")]))
+        entry = pipeline.entry_for(self.cache, 1, self.seg, self.layout_style("fill", [(1.0, 2.0, "fit")]))
+        self.assertEqual(entry["hook_title"], "One")
+
+    def test_old_cache_entry_without_layout_counts_as_auto(self):
+        pipeline.entry_for(self.cache, 1, self.seg, self.layout_style("auto"))  # no error
+        with self.assertRaises(pipeline.PipelineError):
+            pipeline.entry_for(self.cache, 1, self.seg, self.layout_style("fit"))
 
     def test_check_entries_reports_every_problem_before_any_render(self):
         segments = [self.seg, seg(start_time="00:20", end_time="00:30"), dict(self.seg, end_time="00:99")]

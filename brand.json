@@ -5,10 +5,43 @@
   "outline": "#000000",
   "headline_font": "Anton-Regular",
   "base": {
-    "caption": {"size": "medium", "words_per_line": 3, "uppercase": true, "position_y": 0.75, "outline_px": 3},
-    "title": {"enabled": true, "seconds": 4, "size": "medium", "max_lines": 2, "tilt_degrees": -2, "top": 0.05, "text_color": "#111111"},
-    "progress_bar": {"enabled": true, "height_px": 5, "track_alpha": 0.25},
-    "sound": {"music": "low", "whoosh": "normal", "pop": "normal", "sting": "normal"}
+    "caption": {
+      "size": "medium",
+      "words_per_line": 3,
+      "uppercase": true,
+      "position_y": 0.75,
+      "outline_px": 3
+    },
+    "title": {
+      "enabled": true,
+      "seconds": 4,
+      "size": "medium",
+      "max_lines": 2,
+      "tilt_degrees": -2,
+      "top": 0.05,
+      "text_color": "#111111"
+    },
+    "progress_bar": {
+      "enabled": true,
+      "height_px": 5,
+      "track_alpha": 0.25
+    },
+    "sound": {
+      "music": "low",
+      "whoosh": "normal",
+      "pop": "normal",
+      "sting": "normal"
+    },
+    "layout": {
+      "mode": "auto"
+    }
   },
-  "mix": {"music_db": -20, "whoosh_db": -18, "pop_db": -22, "sting_db": -16, "low_offset_db": -6, "target_lufs": -14}
+  "mix": {
+    "music_db": -20,
+    "whoosh_db": -18,
+    "pop_db": -22,
+    "sting_db": -16,
+    "low_offset_db": -6,
+    "target_lufs": -14
+  }
 }

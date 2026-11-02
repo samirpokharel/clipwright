@@ -23,9 +23,10 @@ TITLE_PX = {"small": 56, "medium": 72, "large": 90}
 
 IDENTITY = ("handle", "accent", "text", "outline", "headline_font")
 LOCKED = list(IDENTITY) + ["title.text_color"]
-SECTIONS = ("caption", "title", "progress_bar", "sound")
+SECTIONS = ("caption", "title", "progress_bar", "sound", "layout")
 
 BOUNDS: Dict[str, Dict[str, Any]] = {
+    "layout.mode": {"type": "enum", "values": ["auto", "fill", "fit"]},
     "caption.size": {"type": "enum", "values": SIZES},
     "caption.words_per_line": {"type": "int", "min": 1, "max": 6},
     "caption.uppercase": {"type": "bool"},
@@ -222,6 +223,7 @@ def resolve_style(
         "title": merged["title"],
         "progress_bar": merged["progress_bar"],
         "sound": merged["sound"],
+        "layout": merged["layout"],
         "mix": copy.deepcopy(brand["mix"]),
     }
 
