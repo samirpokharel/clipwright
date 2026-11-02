@@ -18,8 +18,8 @@ SIZES = ["small", "medium", "large"]
 LEVELS = ["off", "low", "normal"]
 
 # Font pixel sizes at 1080 wide for each size name. Tunable after visual checks.
-CAPTION_PX = {"small": 52, "medium": 64, "large": 80}
-TITLE_PX = {"small": 52, "medium": 64, "large": 80}
+CAPTION_PX = {"small": 72, "medium": 90, "large": 110}
+TITLE_PX = {"small": 56, "medium": 72, "large": 90}
 
 IDENTITY = ("handle", "accent", "text", "outline", "headline_font")
 LOCKED = list(IDENTITY) + ["title.text_color"]
