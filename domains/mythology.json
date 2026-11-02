@@ -1,0 +1,38 @@
+{
+  "name": "mythology",
+  "description": "Hindu mythology in English or Hinglish. Gate: named source text, variants noted, verses checked, respectful framing.",
+  "clip_seconds": {
+    "min": 20,
+    "max": 75
+  },
+  "verification": {
+    "text": [
+      "source_text",
+      "variant_note"
+    ],
+    "true": [
+      "verses_checked",
+      "respect_check"
+    ],
+    "time_inside": [],
+    "flags": []
+  },
+  "overlays": {
+    "speaker": false,
+    "disclaimer": null
+  },
+  "sources": {
+    "queries": [
+      "Ramayana explained",
+      "Mahabharata story podcast",
+      "Hindu mythology explained",
+      "Puranas stories explained",
+      "Bhagavad Gita explained"
+    ],
+    "watchlist": [],
+    "min_minutes": 15,
+    "min_views": 20000,
+    "max_age_days": null,
+    "per_query": 10
+  }
+}

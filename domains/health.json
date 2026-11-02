@@ -1,0 +1,42 @@
+{
+  "name": "health",
+  "description": "Healthcare podcasts. Strict gate: the question stays with the answer, the speaker and credential are shown, a disclaimer is burned in.",
+  "clip_seconds": {
+    "min": 30,
+    "max": 90
+  },
+  "verification": {
+    "text": [
+      "speaker",
+      "credential",
+      "context_excerpt"
+    ],
+    "true": [
+      "context_checked"
+    ],
+    "time_inside": [
+      "framing_time"
+    ],
+    "flags": [
+      "risk_flags"
+    ]
+  },
+  "overlays": {
+    "speaker": true,
+    "disclaimer": "General information, not medical advice."
+  },
+  "sources": {
+    "queries": [
+      "doctor explains podcast",
+      "cardiologist interview",
+      "nutrition science podcast",
+      "psychiatrist interview mental health",
+      "sleep science podcast"
+    ],
+    "watchlist": [],
+    "min_minutes": 20,
+    "min_views": 20000,
+    "max_age_days": 730,
+    "per_query": 10
+  }
+}
