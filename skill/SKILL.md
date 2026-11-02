@@ -1,32 +1,42 @@
 ---
 name: supoclip
-description: Use when the user wants to turn a long video (YouTube URL or local file) into short vertical 9:16 clips with subtitles and hook titles, "clip this", "make shorts from", SupoClip. Claude Code picks the segments itself; no API keys.
+description: Use when the user wants to turn a long video (YouTube URL or local file) into short vertical 9:16 clips with branded captions, title, key-word highlights and a mixed soundtrack, "clip this", "make shorts from", SupoClip, Clipwright. Claude Code picks the segments and the per-video style itself; no API keys.
 ---
 
-# SupoClip clipping (Claude Code as the selector)
+# Clipwright clipping (Claude Code picks the clips and the style)
 
-Pipeline lives in `__CLIP_DIR__/` and runs the SupoClip backend image
-(`supoclip-backend`) via rootless Docker. Local Whisper transcribes, YOU choose the segments
-(replacing SupoClip's LLM step), SupoClip renders (face-centred 9:16 crop, word-synced captions,
-hook title). No Docker stack, DB, or API key needed.
+Pipeline lives in `__CLIP_DIR__/` and runs the SupoClip backend image (`supoclip-backend`) via Docker.
+Local Whisper transcribes. YOU choose the segments and the style (replacing SupoClip's LLM step).
+Pass 1 (SupoClip) cuts and frames. Pass 2 (Clipwright) adds brand captions, title block, handle,
+progress bar and sound. No Docker stack, DB, or API key needed.
 
 ## Steps
 
-1. **Docker up?** `docker info` must work. If not, start the Docker daemon
-   and retry.
+1. **Docker up?** `docker info` must work. If not, start the Docker daemon and retry.
 2. **Fetch + transcribe** (slow on CPU; run in background for videos over ~10 min):
    `__CLIP_DIR__/clip fetch <youtube-url | /work/<file>>`
-   Local files must sit under `__CLIP_DIR__/` (it is mounted as `/work`).
+   Local files must sit under `__CLIP_DIR__/` (mounted as `/work`).
    Env `WHISPER_MODEL_SIZE=base|small|medium` (default `small`). Prints `job=<id>`.
-3. **Read** `__CLIP_DIR__/jobs/<job>/transcript.txt` (lines like
-   `[00:12 - 00:21] text`). Select clips yourself using the rules below.
-4. **Write** `jobs/<job>/segments.json` (schema below).
-5. **Render:** `clip render <job> /work/jobs/<job>/segments.json`
-   Flags: `--clip-length short|medium|long`, `--caption-template <name>`, `--no-subtitles`,
-   `--original` (keep aspect), `--exact` (use my timestamps verbatim; default lets SupoClip
-   snap openings to sentence starts), `--max-seconds N`.
-   Output: `__CLIP_DIR__/out/<job>/NN_*.mp4` + `manifest.json`.
-6. **Verify** before reporting: `ffprobe` one clip (expect 1080x1920) and view a frame.
+3. **Read** `__CLIP_DIR__/jobs/<job>/transcript.txt` (lines like `[00:12 - 00:21] text`) and
+   `jobs/<job>/state.json` (title, channel, description, categories, tags when available).
+4. **Choose clips and a style** for each (rules below). Run `clip profiles` and `clip schema` if you
+   need the exact presets and bounds.
+5. **Write** `jobs/<job>/segments.json` (schema below).
+6. **Render:** `clip render <job> /work/jobs/<job>/segments.json`. An invalid style stops the run
+   before anything renders, with the segment number and field.
+7. **Verify** before reporting: `ffprobe` one clip (1080x1920, H.264 plus AAC), then view frames at
+   about 1.5 s (title) and mid-clip (captions, key-word colour), and confirm the title does not cover
+   the speaker's face.
+8. **Tweak loop** (do not re-render everything): edit `style` or `key_words` in `segments.json`, then
+   `clip render <job> <segments> --recompose --only N` redoes pass 2 for segment N in about half a
+   minute. `clip brand-preview <job> --segment N` renders a 3 second sample. Changing a
+   segment's `start_time` or `end_time` needs a render without `--recompose`.
+
+Render flags: `--only N [N ...]`, `--recompose`, `--exact` (use my timestamps verbatim; default snaps
+openings to sentence starts), `--clip-length short|medium|long`, `--max-seconds N`, `--original`
+(keep aspect), `--no-subtitles`, `--no-music --no-whoosh --no-pop --no-sting`, and
+`--allow-brand-override` (lets a profile or clip style change locked identity fields; never use it
+unless the user asks). Output: `__CLIP_DIR__/out/<job>/NN_*.mp4`, `manifest.json`, `credits.txt`.
 
 ## Selection rules (from SupoClip's own prompt)
 
@@ -35,13 +45,42 @@ hook title). No Docker stack, DB, or API key needed.
 - 15-60 s (ideal 25-50 s) unless `--clip-length` says otherwise. Needs full setup AND payoff.
 - `start_time` = first word of a self-contained sentence (no fillers, bare agreements, or
   references to context outside the clip). `end_time` finishes the last thought; do not include
-  the next thought's opening words.
+  the next thought's opening words. `end_time` snaps to the end of its sentence, so end one second
+  before the next sentence's first word, or its opening word leaks into the clip.
 - Prefer strong hook, emotional charge, concrete value, surprise. Skip intros, sponsor reads,
   CTAs, contextless quotes, repeated points.
 - Use only timestamps present in the transcript (MM:SS; HH:MM:SS for long videos).
 - `text` is verbatim from the range. No fabrication. Accuracy beats "viral".
 - `hook_title`: 3-9 words, plain text, in the transcript's language, grounded in the clip,
-  no hashtags/emojis/quotes.
+  no hashtags/emojis/quotes. It becomes the brand title block.
+
+## Choosing the style
+
+Brand identity (accent colour, headline font, handle) is fixed in `brand.json` and never changes per
+clip. You choose how the clip behaves with a profile plus small overrides.
+
+**Pick the profile from the video type**, using title, channel, description, categories and tags in
+`state.json`, then the transcript. Say which profile you chose and why.
+
+| Profile | Use for | What it does |
+|---|---|---|
+| `explainer` | Commentary, news, tech, diagrams, screen recordings | 3-word captions, music low, whooshes and pops on |
+| `performance` | Music, drumming, live shows | Music bed off, larger 5 s title, light effects |
+| `interview` | Podcasts, conversations | 5-word sentence-case captions, no whooshes or pops |
+| `tutorial` | How-to, lessons | Large captions, music off, light effects |
+
+**Per-clip adjustments** go in the segment's `style` block, only when the clip needs them, and only
+within the bounds `clip schema` prints. Examples:
+- Dense, fast speech: `"caption": {"words_per_line": 2}`.
+- A clip that is all talking with no visuals: `"sound": {"whoosh": "off"}`.
+- A very short clip: `"title": {"seconds": 2}`.
+
+**`key_words`**: 2 to 4 words or short phrases that carry the meaning (a number, a name, the
+payoff), spelled as spoken. They are highlighted in the accent colour and trigger a quiet pop. A
+word that is not spoken in the clip is reported and ignored.
+
+**`source_music`**: set `true` when the transcript shows the source has music or lyrics under the
+speech (song lines, "[Music]"). The music bed is then skipped.
 
 ## segments.json
 
@@ -53,13 +92,28 @@ hook title). No Docker stack, DB, or API key needed.
   "reasoning": "why this works as a standalone clip",
   "virality": {"hook_score": 20, "engagement_score": 18, "value_score": 20,
                "shareability_score": 17, "total_score": 75, "hook_type": "question"},
-  "hook_title": "Why most founders quit too early"
+  "hook_title": "Why most founders quit too early",
+  "key_words": ["10 million", "quit"],
+  "source_music": false,
+  "style": {"profile": "explainer", "caption": {"words_per_line": 3}}
 }]
 ```
-Scores are 0-25 each, total is their sum (0-100).
+Scores are 0-25 each, total is their sum (0-100). `key_words`, `source_music` and `style` are optional.
+
+## Sounds and licensing
+
+- Whooshes, pops and stings are synthesized by ffmpeg and carry no licence. A built-in placeholder
+  pad is the music bed until real tracks are added. It is not good music.
+- Add real tracks with `clip sounds add --file <path> --kind music --license <own|CC0|CC-BY> [--author ...]`
+  or `clip sounds add <freesound-url-or-id> --kind <kind>` (needs `FREESOUND_API_KEY` in the
+  environment; only CC0 and CC-BY are accepted). `clip sounds list` shows the library.
+- The user clips other people's videos for a public channel. Music must be cleared for that use. If
+  `credits.txt` is not empty, tell the user to paste its lines into the post description.
+- The footage belongs to its creators. Remind the user to get permission before posting.
 
 ## Notes
 
 - First `fetch` downloads the Whisper model (~460 MB for `small`) into `cache/` in this folder.
-- Edit `clip.py` (bind-mounted, no rebuild) to change behaviour; the backend source is the
-  upstream repo cloned by setup.sh into `__CLIP_DIR__/vendor/supoclip/` (AGPL-3.0).
+- Names in captions come from Whisper's spelling and can be wrong.
+- Edit `clip.py` and `clipwright/` (bind-mounted, no rebuild) to change behaviour; the backend source
+  is the upstream repo cloned by setup.sh into `__CLIP_DIR__/vendor/supoclip/` (AGPL-3.0).

@@ -80,7 +80,7 @@ All of `clip.py` and its modules run inside the `supoclip-backend` container, as
     "progress_bar": {"enabled": true, "height_px": 5, "track_alpha": 0.25},
     "sound": {"music": "low", "whoosh": "normal", "pop": "normal", "sting": "normal"}
   },
-  "mix": {"music_db": -20, "whoosh_db": -18, "pop_db": -22, "sting_db": -16, "duck_db": -10, "low_offset_db": -6, "target_lufs": -14}
+  "mix": {"music_db": -20, "whoosh_db": -18, "pop_db": -22, "sting_db": -16, "low_offset_db": -6, "target_lufs": -14}
 }
 ```
 
@@ -173,7 +173,7 @@ Call SupoClip's `build_assemblyai_ass_subtitles` (in `media/captions.py`) with:
 
 ### 5.3 Brand title, handle, progress bar
 - **Title block.** A second ASS file (or a second event set) drawn by `compose.py`: accent-coloured opaque box, headline font, tilted by `tilt_degrees`, at `top`, for `seconds`, with at most `max_lines` lines. If libass cannot render the tilted box faithfully, the fallback is SupoClip's `hook_editor_style` on the built-in title. Choosing between them is the first task of the plan.
-- **Handle.** One ASS event, bottom-left, for the whole clip.
+- **Handle.** One ASS event, bottom-left at 0.84 of the frame height (just above the bottom safe zone), for the whole clip.
 - **Progress bar.** An ffmpeg `drawbox` pair: a faint full-width track and an accent bar whose width grows with `t / duration`.
 
 ### 5.4 One ffmpeg run
@@ -219,11 +219,11 @@ Freesound's API terms say commercial use of the API is negotiated case by case. 
 | Outro | `duration - 0.6` | Always, if enabled | `sting_db` |
 | Whoosh | Source shot changes mapped through `keep_ranges` | At most one per 4 s | `whoosh_db` |
 | Pop | Start of the first matched word of each key word or phrase | At most 3 per clip | `pop_db` |
-| Music bed | 0 to `duration` | Skipped if `source_music` is true or no music exists in the library | `music_db`, then `duck_db` while speech is present |
+| Music bed | 0 to `duration` | Skipped if `source_music` is true or `sound.music` is `off`. With no music track in the library, the built-in pad is used. | `music_db` (plus `low_offset_db` for `low`), then ducked by sidechain compression while speech is present |
 
 **Shot changes** come from ffmpeg's scene-change filter on the source over the kept ranges, threshold 0.35, then mapped to clip time.
 
-**Ducking.** The speech track is the key for `sidechaincompress` on the music. Starting values: threshold 0.05, ratio 8, attack 20 ms, release 400 ms. Final values are tuned by ear and by the test in section 9.
+**Ducking.** The speech track is the key for `sidechaincompress` on the music. Constants in `compose.py`: threshold 0.05, ratio 8, attack 20 ms, release 400 ms. Measured on a synthetic clip, these duck the music by about 14.6 dB while speech plays. There is no separate `duck_db` setting.
 
 **Music bed.** Looped to clip length, 0.5 s fade in, 1 s fade out. When several music tracks exist, the pick is deterministic by clip number, so re-runs match.
 
