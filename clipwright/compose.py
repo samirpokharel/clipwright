@@ -232,7 +232,7 @@ def build_ffmpeg_args(
         )
     target = style["mix"]["target_lufs"]
     if normalize:
-        graph.append(f"[mixed]loudnorm=I={target:g}:TP=-1.5:LRA=11[aout]")
+        graph.append(f"[mixed]loudnorm=I={target:g}:TP=-3:LRA=11[aout]")
     else:  # tests that measure relative levels need the dynamic gain out of the way
         graph.append("[mixed]anull[aout]")
 

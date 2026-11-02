@@ -227,7 +227,7 @@ Freesound's API terms say commercial use of the API is negotiated case by case. 
 
 **Music bed.** Looped to clip length, 0.5 s fade in, 1 s fade out. When several music tracks exist, the pick is deterministic by clip number, so re-runs match.
 
-**Loudness.** The final mix goes through `loudnorm` to `target_lufs` (default -14) with a true-peak ceiling of -1.5 dB. The -14 figure is a common short-form target, not verified per platform.
+**Loudness.** The final mix goes through `loudnorm` to `target_lufs` (default -14) with a true-peak ceiling of -3 dB before AAC encoding. At -1.5 dB the encoded clips peaked up to +0.1 dBFS (measured 2026-11-02), so the ceiling leaves headroom; the cost is that integrated loudness lands 0.4 to 1.4 LU below the target on speech-heavy clips. The -14 figure is a common short-form target, not verified per platform.
 
 ### 6.4 Credits
 After rendering, write `out/<id>/credits.txt` with one line per CC-BY sound used in any clip of the job. The file is empty (or absent) when none were used.
@@ -269,7 +269,7 @@ clip sounds add|list                        see 6.2
 - the file is 1080 by 1920 with H.264 video and AAC audio, and the duration matches the pass-1 clip;
 - a frame at 1 s contains the accent colour inside the title region, and a frame at 6 s (after the title) does not;
 - the progress bar's accent width is about 0% near the start and about 100% at the end;
-- integrated loudness is within 1 LU of `target_lufs`;
+- integrated loudness is within 2 LU of `target_lufs`;
 - with music enabled, music-only energy is at least 6 dB lower in a window containing speech than in a window of silence from the speech track.
 
 The existing manual flow (render a real clip, extract frames, look at them) stays as the final check.

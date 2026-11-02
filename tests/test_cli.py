@@ -95,6 +95,20 @@ class HelpersTest(unittest.TestCase):
     def test_clip_filename(self):
         self.assertEqual(pipeline.clip_filename(2, seg(start_time="03:42", end_time="04:28")), "02_clip_0342-0428.mp4")
 
+    def test_describe_plan_summarises_sounds(self):
+        from clipwright import sounds
+        ev = sounds.Event
+        plan = sounds.MixPlan(
+            events=[ev("sting", "a", 0.0, -16.0), ev("whoosh", "b", 2.0, -18.0), ev("whoosh", "b", 9.0, -18.0),
+                    ev("pop", "c", 3.0, -22.0), ev("outro", "d", 20.0, -16.0)],
+            music={"id": "synth-pad", "file": "x", "gain_db": -26.0})
+        self.assertEqual(pipeline.describe_plan(plan),
+                         "music synth-pad -26.0 dB, 2 whooshes, 1 pop, sting+outro")
+
+    def test_describe_plan_with_nothing(self):
+        from clipwright import sounds
+        self.assertEqual(pipeline.describe_plan(sounds.MixPlan()), "no music, 0 whooshes, 0 pops, no sting")
+
     def test_replace_output_swaps_in_new_clip_and_removes_superseded_ones(self):
         import tempfile
         with tempfile.TemporaryDirectory() as d:

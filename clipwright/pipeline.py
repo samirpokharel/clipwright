@@ -7,7 +7,7 @@ from pathlib import Path
 from typing import Any, Dict, List, Sequence, Tuple
 
 from . import style
-from .sounds import KINDS
+from .sounds import KINDS, MixPlan
 from .style import StyleError
 
 SOUND_KINDS = ("music", "whoosh", "pop", "sting")
@@ -96,6 +96,15 @@ def clip_filename(index: int, segment: Dict[str, Any]) -> str:
     start = str(segment["start_time"]).replace(":", "")
     end = str(segment["end_time"]).replace(":", "")
     return f"{index:02d}_clip_{start}-{end}.mp4"
+
+
+def describe_plan(plan: MixPlan) -> str:
+    """One line saying which sounds a clip received."""
+    count = lambda kind: sum(1 for e in plan.events if e.kind == kind)  # noqa: E731
+    whooshes, pops = count("whoosh"), count("pop")
+    music = f"music {plan.music['id']} {plan.music['gain_db']} dB" if plan.music else "no music"
+    sting = "sting+outro" if count("sting") and count("outro") else ("sting" if count("sting") else "no sting")
+    return f"{music}, {whooshes} whoosh{'es' if whooshes != 1 else ''}, {pops} pop{'s' if pops != 1 else ''}, {sting}"
 
 
 def replace_output(part: Path, dest: Path, index: int) -> None:

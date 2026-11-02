@@ -123,14 +123,18 @@ class FfmpegArgsTest(unittest.TestCase):
         mix = sounds.MixPlan(music={"id": "synth-pad", "file": "synth/pad.wav", "gain_db": -26.0})
         text = self.joined(mix=mix)
         self.assertIn("sidechaincompress", text)
-        self.assertIn("loudnorm=I=-14:TP=-1.5", text)
+        self.assertIn("loudnorm=I=-14:TP=-3", text)
         self.assertIn("-stream_loop -1", text)
         self.assertIn("volume=-26.0dB", text)
+
+    def test_true_peak_ceiling_leaves_headroom_for_aac(self):
+        # AAC encoding overshot the loudnorm ceiling by up to 1.6 dB on real clips (measured 2026-11-02)
+        self.assertIn(":TP=-3:", self.joined())
 
     def test_no_music_no_sidechain(self):
         text = self.joined()
         self.assertNotIn("sidechaincompress", text)
-        self.assertIn("loudnorm=I=-14:TP=-1.5", text)
+        self.assertIn("loudnorm=I=-14:TP=-3", text)
 
     def test_no_audio_track_uses_anullsrc(self):
         text = self.joined(has_audio=False)

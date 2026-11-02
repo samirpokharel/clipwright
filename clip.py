@@ -218,6 +218,7 @@ async def render(args) -> None:
                       "profile": (seg.get("style") or {}).get("profile"),
                       "credits": sounds.credits([done["plan"]], library)})
         print(f"{dest}  {entry['duration']:.1f}s  {title}")
+        print(f"    sounds: {pipeline.describe_plan(done['plan'])}")
 
     manifest = sorted(kept + fresh, key=lambda m: Path(m["file"]).name)
     out_manifest.write_text(json.dumps(manifest, indent=2))
