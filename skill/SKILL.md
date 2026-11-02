@@ -60,6 +60,6 @@ Scores are 0-25 each, total is their sum (0-100).
 
 ## Notes
 
-- First `fetch` downloads the Whisper model (~460 MB for `small`) into `supoclip-work/cache/`.
+- First `fetch` downloads the Whisper model (~460 MB for `small`) into `cache/` in this folder.
 - Edit `clip.py` (bind-mounted, no rebuild) to change behaviour; the backend source is the
   upstream repo cloned by setup.sh into `__CLIP_DIR__/vendor/supoclip/` (AGPL-3.0).
