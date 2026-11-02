@@ -157,6 +157,7 @@ The container tests need two cached jobs: `jNQXAC9IVRw` (render tests) and `aMoV
 - **YouTube bot check from the container (seen on 2026-11-02).** Inside the Docker image, yt-dlp lookups and SupoClip's download were answered with YouTube's "Sign in to confirm you're not a bot", while yt-dlp on the host worked from the same connection. Flat searches still work, so `clip sources` lists candidates but marks their licence "Licence not checked", `clip check` cannot read metadata, and a `clip fetch` of a video that is not already cached failed in a test the same day. This is not fixed here and may be temporary; the usual remedy yt-dlp itself suggests is giving it your own cookies, which is your decision to make.
 - Caption and title fonts: Anton has no Devanagari glyphs, so Devanagari text would not render. Hinglish in Latin script is fine.
 - The gate cannot tell whether what Claude recorded is true; read `verification.md`, especially the health `risk_flags`.
+- A YouTube id can start with `-` (about 1 in 64), and the command line then reads it as a flag. Put `--` before the id: `./clip package -- -abc123`. The same applies to `render` and the other job commands, and the UI's package button does not do this yet.
 - Only tested on YouTube sources. Local files, Twitch and Kick are untested. Local file names are cleaned to letters, digits, `_` and `-` for the job id.
 - Loudness (-14 LUFS) and the bottom safe zone (15%) are common short-form practice, not checked against each platform's current guidance.
 
