@@ -48,6 +48,19 @@ openings to sentence starts), `--clip-length short|medium|long`, `--max-seconds 
 `--allow-brand-override` (lets a profile or clip style change locked identity fields; never use it
 unless the user asks). Output: `__CLIP_DIR__/out/<job>/NN_*.mp4`, `manifest.json`, `credits.txt`.
 
+## Domains
+
+Some content needs more than clip selection. Three domains each have their own skill and a
+verification gate that `clip render` enforces: `clip-tech` (tech, AI, startups), `clip-health`
+(healthcare) and `clip-mythology` (Hindu mythology in English or Hinglish). When the user names one,
+use that skill: it tells you how to choose clips and what to write in each segment's `verification`
+object. Fetch with `clip fetch --domain <name> <url>` so the job remembers its domain. A clip whose
+record is incomplete is not rendered, the others still are, and `out/<job>/verification.md` shows
+what was recorded. `clip domains` lists the packs. Jobs without a domain behave as before.
+
+Any segment can carry an optional `commentary`: one line of your own context, at most 140 characters,
+shown as a card after the title.
+
 ## Selection rules (from SupoClip's own prompt)
 
 - Pick 3-7 segments for a typical video; roughly 1 per 5 min of source, max 10.
@@ -134,10 +147,12 @@ speech (song lines, "[Music]"). The music bed is then skipped.
   "key_words": ["10 million", "quit"],
   "source_music": false,
   "style": {"profile": "explainer", "caption": {"words_per_line": 3}},
-  "layout_ranges": [{"from": "00:20", "to": "00:31", "layout": "fill"}]
+  "layout_ranges": [{"from": "00:20", "to": "00:31", "layout": "fill"}],
+  "commentary": "One line of your own context",
+  "verification": {"speaker": "Jane Doe", "claims_checked": true}
 }]
 ```
-Scores are 0-25 each, total is their sum (0-100). `key_words`, `source_music`, `style` and `layout_ranges` are optional.
+Scores are 0-25 each, total is their sum (0-100). `key_words`, `source_music`, `style`, `layout_ranges`, `commentary` and `verification` are optional (`verification` is required for a job with a domain; its fields are in that domain's skill).
 
 ## Sounds and licensing
 

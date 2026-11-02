@@ -28,6 +28,12 @@ if [ -d "$HOME/.claude" ]; then
   mkdir -p "$HOME/.claude/skills/supoclip"
   sed "s|__CLIP_DIR__|$HERE|g" "$HERE/skill/SKILL.md" > "$HOME/.claude/skills/supoclip/SKILL.md"
   echo "Installed Claude Code skill: ~/.claude/skills/supoclip"
+  for dir in "$HERE"/skill/domains/*/; do
+    name="$(basename "$dir")"
+    mkdir -p "$HOME/.claude/skills/clip-$name"
+    sed "s|__CLIP_DIR__|$HERE|g" "$dir/SKILL.md" > "$HOME/.claude/skills/clip-$name/SKILL.md"
+    echo "Installed Claude Code skill: ~/.claude/skills/clip-$name"
+  done
 fi
 chmod +x "$HERE/clip"
 echo "Done. Try: $HERE/clip fetch <youtube-url>"
