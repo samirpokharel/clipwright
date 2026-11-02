@@ -149,7 +149,7 @@ def _prepare_segments(segments, indexes, video_path, args):
 
     transcript_data = load_cached_transcript_data(video_path)
     prepared = []
-    for seg in (segments[i - 1] for i in indexes):
+    for position, seg in enumerate(segments[i - 1] for i in indexes):
         virality = seg.get("virality") or {}
         payload = {
             "start_time": seg["start_time"], "end_time": seg["end_time"], "text": seg.get("text", ""),
@@ -157,6 +157,7 @@ def _prepare_segments(segments, indexes, video_path, args):
             "virality_score": virality.get("total_score", 0),
             "hook_title": None,  # pass 2 draws the brand title
             "hook_start_time": None, "hook_end_time": None,
+            "_order": position,  # the opening review may re-sort the list; callers pair it with `indexes`
         }
         payload["text"] = VideoService._ground_segment_text(payload, transcript_data)
         prepared.append(payload)
@@ -165,11 +166,17 @@ def _prepare_segments(segments, indexes, video_path, args):
             prepared = VideoService._refine_segment_openings(prepared, transcript_data, args.clip_length)
         except Exception as exc:  # heuristic only; keep the chosen openings
             print(f"opening review skipped: {exc}", file=sys.stderr)
+    prepared = sorted(prepared, key=lambda p: p.get("_order", 0))
+    for payload in prepared:
+        payload.pop("_order", None)
     return prepared
 
 
-def _keep_range(video_path: Path, segment: Dict[str, Any]) -> tuple:
-    """The single source range SupoClip would render for this segment (same snapping and limits)."""
+def _keep_range(video_path: Path, segment: Dict[str, Any], max_seconds: float = 60.0) -> tuple:
+    """The single source range SupoClip would render for this segment (same snapping and limits).
+
+    ``max_seconds`` is the render's --max-seconds, so a layout clip gets the same cap as an auto clip.
+    """
     from src.video_utils import (
         clamp_keep_ranges_to_max_duration,
         extend_keep_ranges_to_sentence_boundary,
@@ -179,7 +186,7 @@ def _keep_range(video_path: Path, segment: Dict[str, Any]) -> tuple:
     ranges = [(layout.parse_time(segment["start_time"]), layout.parse_time(segment["end_time"]))]
     ranges = snap_keep_ranges_to_sentence_start(video_path, ranges)
     ranges = extend_keep_ranges_to_sentence_boundary(video_path, ranges)
-    ranges = clamp_keep_ranges_to_max_duration(video_path, ranges)
+    ranges = clamp_keep_ranges_to_max_duration(video_path, ranges, max_seconds)
     if len(ranges) != 1:
         raise RuntimeError(f"layout rendering needs one source range, got {len(ranges)}")
     return ranges[0]
@@ -222,7 +229,7 @@ async def _pass1(segments, indexes, video_path, args, pass1_dir: Path, cache: Di
         prepared = _prepare_segments(segments, custom, video_path, args)
         for i, seg in zip(custom, prepared):
             dest = pass1_dir / f"{i:02d}.mp4"
-            keep = _keep_range(video_path, seg)
+            keep = _keep_range(video_path, seg, args.max_seconds)
             info = render_layout.render_layout_clip(video_path, keep, styles[i - 1]["layout"], dest,
                                                     pass1_dir / "work")
             print(f"segment {i}: layout {styles[i - 1]['layout']['mode']}, runs "
