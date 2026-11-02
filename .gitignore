@@ -12,3 +12,7 @@ sounds/*
 
 __pycache__/
 *.pyc
+
+# review UI and sources data (local state)
+tracker/
+sources/
