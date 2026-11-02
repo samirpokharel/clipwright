@@ -1,0 +1,8 @@
+{
+  "description": "How-to videos and lessons. Larger text, fewer effects.",
+  "style": {
+    "caption": {"size": "large", "words_per_line": 3},
+    "title": {"seconds": 4},
+    "sound": {"music": "off", "whoosh": "low", "pop": "low", "sting": "normal"}
+  }
+}

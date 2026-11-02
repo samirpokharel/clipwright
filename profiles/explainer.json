@@ -1,0 +1,8 @@
+{
+  "description": "Commentary, news and explainers with diagrams or screen recordings.",
+  "style": {
+    "caption": {"size": "medium", "words_per_line": 3},
+    "title": {"seconds": 4},
+    "sound": {"music": "low", "whoosh": "normal", "pop": "normal", "sting": "normal"}
+  }
+}
