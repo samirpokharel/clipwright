@@ -1,6 +1,6 @@
 # clipwright
 
-Turn a long video into short vertical clips with Claude Code as the clip picker. No API keys, no web app, no database.
+Turn a long video into short vertical clips with Claude Code as the clip picker. No API keys, no hosted service, no database.
 
 It wraps the render engine of [SupoClip](https://github.com/FujiwaraChoki/supoclip) (AGPL-3.0) in one Docker container.
 Local Whisper transcribes. Claude Code reads the transcript, chooses the segments and the style, which replaces SupoClip's own LLM call.
@@ -14,7 +14,10 @@ you: "clip this <url>"
   3. pass 1        SupoClip: cut, sentence snapping, 9:16 framing            (container)
   4. pass 2        captions, title block, handle, progress bar, sound        (container)
                    -> out/<id>/*.mp4, manifest.json, credits.txt
+  5. clip package  title, description, hashtags, cover images per clip      (container)
 ```
+
+Around that core: three **domains** (tech, health, mythology) with a verification gate, `clip sources` to find candidate videos, and a **local review UI** (`./clip-ui`) to verify sources and clips and track their status.
 
 ## Requirements
 - Docker (rootless works), git, about 8 GB free disk
@@ -44,7 +47,10 @@ Local files must live inside this folder (it is mounted as `/work`).
 | Command | What it does |
 |---|---|
 | `clip check <url> [<url> ...]` | Read each video's licence and title without downloading. Creative Commons (CC BY) is reusable with credit, anything else needs the creator's permission. |
-| `clip fetch <url\|file>` | Download, transcribe, save `transcript.txt` and `state.json` (with title, channel, description, tags when available). |
+| `clip fetch <url\|file> [--domain D]` | Download, transcribe, save `transcript.txt` and `state.json` (with title, channel, description, tags when available). `--domain` stores the content domain so `render` applies its verification gate. |
+| `clip domains` | List the domains (tech, health, mythology) and what each one's gate requires. |
+| `clip sources <domain> [--query Q] [--limit N]` | Find candidate videos for a domain, no download. Writes `sources/<domain>.md` and `.json`. |
+| `clip package <job>` | Build `out/<job>/upload/NN_slug/` per clip: `video.mp4`, `cover.jpg` plus three candidates, `post.txt`, `post.json`. |
 | `clip render <job> <segments.json>` | Pass 1 then pass 2. Flags: `--only N [N ...]`, `--recompose`, `--exact`, `--clip-length`, `--max-seconds`, `--original`, `--no-subtitles`, `--no-music/--no-whoosh/--no-pop/--no-sting`, `--allow-brand-override`. |
 | `clip render ... --recompose` | Reuse the cached pass 1 and redo only pass 2. Use it to try style and sound changes. |
 | `clip brand-preview <job> [--segment N]` | Render a 3 second sample into `out/<job>/preview_NN.mp4`. |
@@ -57,6 +63,29 @@ An invalid style stops the run before anything renders and names the segment and
 
 ## Source licence
 YouTube reports a licence only for Creative Commons videos (`Creative Commons Attribution license (reuse allowed)`). Every other video comes back with none, which means the standard licence: all rights stay with the creator. `clip check` and `clip fetch` print the result and warn when reuse needs permission. For a CC BY source, the attribution line (`"Title" by Channel, URL, licensed under Creative Commons Attribution (CC BY)`) is written first in `out/<id>/credits.txt` on every render, so paste `credits.txt` into the post description. Only plain CC BY counts as reusable: other Creative Commons variants (NonCommercial and so on) are flagged to read, and a local file is your responsibility. This is a screen, not legal advice, and it does not know whether a creator has given you permission some other way.
+
+## Domains and the verification gate
+A domain is a pack in `domains/<name>.json` plus a skill (`skill/domains/<name>/SKILL.md`, installed as `clip-<name>`): `tech` (tech, AI, startups), `health` (healthcare) and `mythology` (Hindu mythology in English or Hinglish). `clip fetch --domain health <url>` stores the domain with the job. Claude writes a `verification` object on every segment, and **`clip render` refuses to render a clip whose record is incomplete**: the other clips still render, the command exits non-zero and says why, and `out/<job>/verification.md` lists every clip with its record.
+
+| Domain | Clip length | The record must show | On screen |
+|---|---|---|---|
+| `health` | 30 to 90 s | `speaker`, `credential`, `context_excerpt`, `context_checked: true`, `framing_time` inside the clip (the question that frames the answer); `risk_flags` are recorded, not blocking | speaker and credential, disclaimer "General information, not medical advice." |
+| `tech` | 15 to 60 s | `speaker`, `claims_checked: true`; `dated_claims` recorded | nothing extra |
+| `mythology` | 20 to 75 s | `source_text`, `variant_note`, `verses_checked: true`, `respect_check: true` | nothing extra |
+
+Any segment may also carry an optional `commentary` (140 characters at most): one line of your own context, shown as a card in the title slot after the title ends. The gate checks that the record is complete and, where it can, that it holds (clip length, framing moment). It cannot judge whether a claim is true. It records what Claude says it checked, for you to audit. Jobs without a domain render as before.
+
+## Finding sources
+`clip sources <domain>` searches YouTube with the pack's queries (and any `--query` you add, and the pack's `watchlist` of channels), drops videos already fetched or rejected, short or unpopular ones, looks up each remaining candidate's licence and upload date, and ranks them: CC BY first, then watchlist channels, then by views. Nothing is downloaded and no API key is needed. It lists what YouTube search returns, which is not necessarily the best material, and it cannot know whether you have permission: you check that, then approve in the UI or tell Claude which URLs to clip.
+
+## Upload package
+Claude writes `title` (100 characters at most), `description`, `hashtags` (3 to 6, each starting with `#`) and optionally `thumbnail_time` on each segment. `clip package <job>` validates them, appends the source credit (or the CC BY attribution line), the sound credits and the domain disclaimer to the description, and writes per clip a folder with the video, three cover candidates (the first at `thumbnail_time`, default 1.5 s, where the brand title is on screen; the others 40 % and 75 % through), the chosen `cover.jpg`, `post.txt` (title, description, a short caption for TikTok and Reels) and `post.json`. A clip with a problem is skipped with a message and the others are still packaged. Platform limits differ and are not verified here, so the limits used are conservative. Whether a platform accepts a custom cover for a Short is also unverified.
+
+## Review UI
+```bash
+./clip-ui            # http://127.0.0.1:8770/  (needs uv; dependencies are declared inline)
+```
+A local page, bound to `127.0.0.1`, with no login. **Sources**: pick a domain, press Search, preview each video, set the permission (unchecked, asked, granted, cc), add a note, approve or reject, and copy the fetch commands for the approved ones. **Clips**: play each rendered clip, see its verification record and gate problems, edit title, description and hashtags, choose a cover, mark it OK or Needs fix, and build the upload package (only when every clip of the job is marked OK). Status (found, approved, fetched, clipped, verified, posted) is kept in `tracker/state.json` and follows the files on disk. Edits go to `jobs/<job>/post_edits.json`. Searching and packaging run `./clip`, so Docker must be up. Fetching and rendering stay on the command line (or in Claude Code).
 
 ## Brand and style
 Style is resolved in three layers, later layers winning: **`brand.json`** (identity and base style), then a **profile** in `profiles/`, then the **`style` block** of a segment.
@@ -114,16 +143,20 @@ Cost: no API fees. It uses your Claude Code usage for the selection step only.
 
 ## Tests
 ```bash
-python3 -m unittest discover -s tests -t .   # host: style, timing, sounds, layout, compose arguments, CLI, ducking
-bash tests/container.sh                       # in the image: real pass 1 then pass 2, key-phrase highlights, multi-range timing, fill/fit layouts, faster-whisper
+python3 -m unittest discover -s tests -t .   # host: style, timing, sounds, layout, compose arguments, CLI, ducking, domains, gate, overlays, tracker, sources, package
+uv run --with fastapi --with httpx --with jinja2 --with python-multipart python3 -m unittest tests.test_ui   # the review UI (skipped on a plain interpreter)
+bash tests/container.sh                       # in the image: real pass 1 then pass 2, key-phrase highlights, multi-range timing, fill/fit layouts, faster-whisper, overlays, the gate through `clip render`, covers and `clip package`
 ```
 The container tests need two cached jobs: `jNQXAC9IVRw` (render tests) and `aMoVyJ9_M24` (layout tests). Fetch each once with `clip fetch https://www.youtube.com/watch?v=<id>`.
 
 ## Limits
 - CPU transcription is still the bottleneck: about 2x real time with faster-whisper, so a one-hour video takes about half an hour (extrapolated). A Google Colab GPU would likely be faster still; that is not measured here, it needs manual upload and download steps, and it would send the audio to Google, so it is not for client or office material.
 - Whisper misspells names, and the captions copy the transcript spelling.
-- No editor and no accounts. To change a clip, edit `segments.json` and run `clip render --recompose`.
+- No editor and no accounts. To change a clip, edit `segments.json` and run `clip render --recompose`. The review UI changes post text and marks only; it does not edit clips.
 - The transcript text and extracted frames go to Claude through your Claude Code session.
+- **YouTube bot check from the container (seen on 2026-11-02).** Inside the Docker image, yt-dlp lookups and SupoClip's download were answered with YouTube's "Sign in to confirm you're not a bot", while yt-dlp on the host worked from the same connection. Flat searches still work, so `clip sources` lists candidates but marks their licence "Licence not checked", `clip check` cannot read metadata, and a `clip fetch` of a video that is not already cached failed in a test the same day. This is not fixed here and may be temporary; the usual remedy yt-dlp itself suggests is giving it your own cookies, which is your decision to make.
+- Caption and title fonts: Anton has no Devanagari glyphs, so Devanagari text would not render. Hinglish in Latin script is fine.
+- The gate cannot tell whether what Claude recorded is true; read `verification.md`, especially the health `risk_flags`.
 - Only tested on YouTube sources. Local files, Twitch and Kick are untested. Local file names are cleaned to letters, digits, `_` and `-` for the job id.
 - Loudness (-14 LUFS) and the bottom safe zone (15%) are common short-form practice, not checked against each platform's current guidance.
 
@@ -131,6 +164,7 @@ The container tests need two cached jobs: `jNQXAC9IVRw` (render tests) and `aMoV
 - Not affiliated with SupoClip or Anthropic. Claude Code and SupoClip are their owners' products.
 - `clip.py` imports SupoClip's AGPL-3.0 code at run time, so this repo is licensed AGPL-3.0 too (see LICENSE).
 - Clips you make from someone else's video are still their footage. Get permission before posting them.
+  YouTube's own reused-content policy applies even with the creator's permission, and from October 2026 Shorts distribution is reduced for channels that mostly repost others' clips without meaningful changes (commentary, analysis or storytelling). Permission settles copyright, not that policy. Read YouTube's current rules before you rely on a clips-only channel.
   Downloading from YouTube may breach its terms. You are responsible for what you clip and publish.
 - Music is your responsibility: the tools record licences and refuse the wrong ones, but do not decide fair use or platform policy.
-- `out/`, `jobs/`, `tmp/`, `cache/` and `sounds/` are git-ignored so downloaded footage and audio never get committed.
+- `out/`, `jobs/`, `tmp/`, `cache/`, `sounds/`, `sources/` and `tracker/` are git-ignored so downloaded footage and audio never get committed.

@@ -41,7 +41,9 @@ progress bar and sound. No Docker stack, DB, or API key needed.
    minute. `clip brand-preview <job> --segment N` renders a 3 second sample. Changing a
    segment's `start_time`, `end_time` or layout needs a render without `--recompose` (it tells you).
 
-Other commands: `clip check` (licence screen), `clip frames` (contact sheet), `clip schema`, `clip profiles`, `clip sounds`.
+Other commands: `clip check` (licence screen), `clip frames` (contact sheet), `clip schema`, `clip profiles`, `clip sounds`,
+`clip domains`, `clip sources <domain>` (find candidate videos), `clip package <job>` (upload package per clip). The user's
+review page is `__CLIP_DIR__/clip-ui` (local, http://127.0.0.1:8770/).
 Render flags: `--only N [N ...]`, `--recompose`, `--exact` (use my timestamps verbatim; default snaps
 openings to sentence starts), `--clip-length short|medium|long`, `--max-seconds N`, `--original`
 (keep aspect), `--no-subtitles`, `--no-music --no-whoosh --no-pop --no-sting`, and
@@ -149,10 +151,12 @@ speech (song lines, "[Music]"). The music bed is then skipped.
   "style": {"profile": "explainer", "caption": {"words_per_line": 3}},
   "layout_ranges": [{"from": "00:20", "to": "00:31", "layout": "fill"}],
   "commentary": "One line of your own context",
-  "verification": {"speaker": "Jane Doe", "claims_checked": true}
+  "verification": {"speaker": "Jane Doe", "claims_checked": true},
+  "title": "Why most founders quit too early", "description": "One or two lines of value.",
+  "hashtags": ["#startups", "#founders", "#advice"], "thumbnail_time": 1.5
 }]
 ```
-Scores are 0-25 each, total is their sum (0-100). `key_words`, `source_music`, `style`, `layout_ranges`, `commentary` and `verification` are optional (`verification` is required for a job with a domain; its fields are in that domain's skill).
+Scores are 0-25 each, total is their sum (0-100). `key_words`, `source_music`, `style`, `layout_ranges`, `commentary` and `verification` are optional (`verification` is required for a job with a domain; its fields are in that domain's skill). `title` (100 characters at most), `description`, `hashtags` (3 to 6, each with `#`) and `thumbnail_time` are needed for `clip package`: write them after the clips render, accurate to the clip, hook first, no promise the clip does not keep. Then run `clip package <job>` and tell the user the folder, and that they review and mark clips in the UI.
 
 ## Sounds and licensing
 
