@@ -1,6 +1,7 @@
 """Domain overlays and the gate inside the supoclip-backend image, on the cached 19 s test job."""
 import json
 import subprocess
+import sys
 import unittest
 from pathlib import Path
 
@@ -62,6 +63,72 @@ class OverlayRenderTest(unittest.TestCase):
         self.assertEqual(probe(self.over, "stream=width,height"), probe(self.plain, "stream=width,height"))
         self.assertAlmostEqual(float(probe(self.over, "format=duration")),
                                float(probe(self.plain, "format=duration")), delta=0.1)
+
+
+class GateRenderTest(unittest.TestCase):
+    """clip render end to end: the gate blocks before pass 1, verified clips render, other jobs are unchanged."""
+
+    SOURCE = WORK / "tmp/youtube-cache/jNQXAC9IVRw/full-1080.mp4"
+    JOBS = ("gate-test", "gate-plain")
+
+    @classmethod
+    def setUpClass(cls):
+        if not cls.SOURCE.exists():
+            raise unittest.SkipTest("needs the cached jNQXAC9IVRw video")
+        cls.cleanup()
+
+    @classmethod
+    def tearDownClass(cls):
+        cls.cleanup()
+
+    @classmethod
+    def cleanup(cls):
+        import shutil
+        for job in cls.JOBS:
+            shutil.rmtree(WORK / "jobs" / job, ignore_errors=True)
+            shutil.rmtree(WORK / "out" / job, ignore_errors=True)
+
+    def render(self, job, segment, domain):
+        state = {"video_path": str(self.SOURCE), "source": "local", "duration": 19.0}
+        if domain:
+            state["domain"] = domain
+        folder = WORK / "jobs" / job
+        folder.mkdir(parents=True, exist_ok=True)
+        (folder / "state.json").write_text(json.dumps(state))
+        seg_file = folder / "segments.json"
+        seg_file.write_text(json.dumps([segment]))
+        proc = subprocess.run([sys.executable, "/work/clip.py", "render", job, str(seg_file), "--no-subtitles"],
+                              capture_output=True, text=True, cwd="/app")
+        return proc, sorted((WORK / "out" / job).glob("*.mp4"))
+
+    def segment(self, **over):
+        seg = {"start_time": "00:00", "end_time": "00:17", "text": "x", "hook_title": "The first video",
+               "relevance_score": 0.8, "reasoning": "", "virality": {"total_score": 70}}
+        seg.update(over)
+        return seg
+
+    def test_missing_verification_renders_nothing(self):
+        proc, clips = self.render("gate-test", self.segment(), "tech")
+        self.assertNotEqual(proc.returncode, 0)
+        self.assertIn("tech gate", proc.stdout + proc.stderr)
+        self.assertEqual(clips, [])
+        self.assertIn("BLOCKED", (WORK / "out/gate-test/verification.md").read_text())
+
+    def test_verified_clip_renders_with_report(self):
+        seg = self.segment(verification={"speaker": "Jawed Karim", "claims_checked": True},
+                           commentary="The first video ever uploaded to YouTube.")
+        proc, clips = self.render("gate-test", seg, "tech")
+        self.assertEqual(proc.returncode, 0, proc.stdout + proc.stderr)
+        self.assertEqual(len(clips), 1)
+        report = (WORK / "out/gate-test/verification.md").read_text()
+        self.assertIn(": OK", report)
+        self.assertIn("The first video ever uploaded to YouTube.", report)
+
+    def test_job_without_domain_renders_as_before(self):
+        proc, clips = self.render("gate-plain", self.segment(), None)
+        self.assertEqual(proc.returncode, 0, proc.stdout + proc.stderr)
+        self.assertEqual(len(clips), 1)
+        self.assertFalse((WORK / "out/gate-plain/verification.md").exists())
 
 
 if __name__ == "__main__":

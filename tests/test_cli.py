@@ -56,6 +56,14 @@ class ParserTest(unittest.TestCase):
         with self.assertRaises(SystemExit):
             pipeline.build_parser().parse_args(["check"])
 
+    def test_fetch_domain_flag(self):
+        p = pipeline.build_parser()
+        self.assertEqual(p.parse_args(["fetch", "https://y/1", "--domain", "health"]).domain, "health")
+        self.assertIsNone(p.parse_args(["fetch", "https://y/1"]).domain)
+
+    def test_domains_command_parses(self):
+        self.assertEqual(pipeline.build_parser().parse_args(["domains"]).cmd, "domains")
+
     def test_frames_command_parses(self):
         p = pipeline.build_parser()
         a = p.parse_args(["frames", "job1", "--segment", "2", "--every", "2"])

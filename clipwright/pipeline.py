@@ -21,10 +21,13 @@ def build_parser() -> argparse.ArgumentParser:
 
     f = sub.add_parser("fetch", help="download and transcribe a video")
     f.add_argument("source")
+    f.add_argument("--domain", default=None,
+                   help="content domain (see `clip domains`): its verification gate applies to this job's clips")
 
     ck = sub.add_parser("check", help="read each video's licence and title without downloading it")
     ck.add_argument("urls", nargs="+", metavar="url")
 
+    sub.add_parser("domains", help="list the content domains and what each one's gate requires")
     sub.add_parser("schema", help="print the style fields and bounds as JSON")
     sub.add_parser("profiles", help="list profiles with their resolved values")
 

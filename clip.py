@@ -2,9 +2,10 @@
 
 Runs inside the supoclip-backend image, driven by ./clip. See README.md and `clip --help`.
 
-    clip fetch <url|file>            download + transcribe (+ video metadata)
+    clip fetch <url|file> [--domain D]  download + transcribe (+ video metadata, + domain gate)
     clip check <url> [<url> ...]     licence and title of candidate videos, no download
     clip render <job> segments.json  pass 1 (SupoClip cut and frame) then pass 2 (brand + sound)
+    clip domains                     content domains (tech, health, mythology) and their gates
     clip schema | profiles           what style fields and presets exist
     clip brand-preview <job>         3 second sample from the cached pass 1
     clip frames <job> --segment N    contact sheet to choose each clip's layout from
@@ -22,7 +23,9 @@ import sys
 from pathlib import Path
 from typing import Any, Dict, List
 
-from clipwright import compose, freesound, layout, licence, pipeline, render_layout, sounds, style, transcribe
+from clipwright import (compose, domains, freesound, gate, layout, licence, pipeline, render_layout, sounds,
+                        style, transcribe)
+from clipwright.domains import DomainError
 from clipwright.sounds import SoundError
 from clipwright.style import StyleError
 
@@ -31,6 +34,7 @@ JOBS = WORK / "jobs"
 OUT = WORK / "out"
 SOUNDS = WORK / "sounds"
 PROFILES = WORK / "profiles"
+DOMAINS = WORK / "domains"
 BRAND = WORK / "brand.json"
 FONTS = Path("/app/fonts")
 
@@ -89,6 +93,8 @@ async def fetch(args) -> None:
     from src.services.video_service import VideoService
     from src.youtube_utils import get_youtube_video_id
 
+    if args.domain:
+        domains.load_pack(args.domain, DOMAINS)  # fail before a long download if the domain is unknown
     source = args.source
     local = Path(source)
     meta: Dict[str, Any] = {}
@@ -115,10 +121,13 @@ async def fetch(args) -> None:
     duration = VideoService._get_file_duration(Path(video_path))
     lic = licence.classify(meta.get("license"), local=url is None)
     state = {"video_path": str(video_path), "source": source, "duration": duration, **meta,
+             **({"domain": args.domain} if args.domain else {}),
              "license_kind": lic["kind"], "license_label": lic["label"],
              "attribution": licence.attribution(meta.get("title"), meta.get("channel"), source, lic["kind"])}
     (job_dir / "state.json").write_text(json.dumps(state, indent=2))
     print(f"job={job}")
+    if args.domain:
+        print(f"domain={args.domain}")
     print(f"video={video_path} duration={duration}s words={len(words)}")
     if meta.get("title"):
         print(f"title={meta['title']} channel={meta.get('channel')}")
@@ -219,13 +228,15 @@ async def _pass1(segments, indexes, video_path, args, pass1_dir: Path, cache: Di
     (pass1_dir / "manifest.json").write_text(json.dumps(cache, indent=2))
 
 
-def _compose_one(i, seg, st, entry, library, dest: Path, workdir: Path, captions: bool) -> Dict[str, Any]:
+def _compose_one(i, seg, st, entry, library, dest: Path, workdir: Path, captions: bool,
+                 pack=None) -> Dict[str, Any]:
     analysis = compose.analyze_clip(entry)
     for word in analysis["unmatched"]:
         print(f"warning: segment {i}: key word {word!r} was not found in the spoken words", file=sys.stderr)
     plan = sounds.plan_mix(st, entry["duration"], analysis["pops"], analysis["shots"], library,
                            i - 1, bool(seg.get("source_music")))
-    compose.compose_clip(entry, st, plan, dest, workdir, SOUNDS, captions=captions)
+    compose.compose_clip(entry, st, plan, dest, workdir, SOUNDS, captions=captions,
+                         overlays=gate.overlays_for(pack, seg))
     return {"plan": plan, "analysis": analysis}
 
 
@@ -234,6 +245,7 @@ async def render(args) -> None:
     state = json.loads((job_dir / "state.json").read_text())
     video_path = Path(state["video_path"])
     segments = _load_segments(args.segments)
+    pack = domains.load_pack(state["domain"], DOMAINS) if state.get("domain") else None
     brand = _brand()
     disabled = tuple(k for k in pipeline.SOUND_KINDS if getattr(args, f"no_{k}"))
     try:
@@ -248,6 +260,20 @@ async def render(args) -> None:
     if bad:
         sys.exit(f"segment numbers out of range: {bad} (segments.json has {len(segments)})")
 
+    out_dir = OUT / args.job
+    out_dir.mkdir(parents=True, exist_ok=True)
+    allowed, blocked = gate.partition(pack, segments, indexes)
+    gate_name = f"{pack['name']} gate" if pack else "commentary check"
+    for problems in blocked.values():
+        for problem in problems:
+            print(problem, file=sys.stderr)
+    if pack:
+        (out_dir / "verification.md").write_text(
+            gate.report_markdown(pack, segments, gate.check_all(pack, segments)), encoding="utf-8")
+    if not allowed:
+        sys.exit(f"Nothing was rendered: every selected clip failed the {gate_name}.")
+    indexes = allowed
+
     pass1_dir = job_dir / "pass1"
     (pass1_dir / "work").mkdir(parents=True, exist_ok=True)
     manifest_path = pass1_dir / "manifest.json"
@@ -257,25 +283,29 @@ async def render(args) -> None:
     else:
         await _pass1(segments, indexes, video_path, args, pass1_dir, cache, styles)
 
-    out_dir = OUT / args.job
-    out_dir.mkdir(parents=True, exist_ok=True)
     out_manifest = out_dir / "manifest.json"
     previous = json.loads(out_manifest.read_text()) if out_manifest.exists() else []
     captions = not args.no_subtitles
     extra_credits = [state["attribution"]] if state.get("attribution") else []
     _, failed = pipeline.compose_all(
         indexes, segments, styles, cache, library, out_dir, pass1_dir / "work",
-        lambda i, seg, st, entry, lib, part, work: _compose_one(i, seg, st, entry, lib, part, work, captions),
+        lambda i, seg, st, entry, lib, part, work: _compose_one(i, seg, st, entry, lib, part, work, captions, pack),
         previous, extra_credits=extra_credits,
     )
+    problems = []
     if failed:
-        sys.exit(f"segments failed: {failed}")
+        problems.append(f"segments failed: {failed}")
+    if blocked:
+        problems.append(f"segments blocked by the {gate_name}: {sorted(blocked)} (see above)")
+    if problems:
+        sys.exit("; ".join(problems))
 
 
 async def brand_preview(args) -> None:
     job_dir = _job_dir(args.job)
     state = json.loads((job_dir / "state.json").read_text())
     segments = _load_segments(args.segments or str(job_dir / "segments.json"))
+    pack = domains.load_pack(state["domain"], DOMAINS) if state.get("domain") else None
     try:
         styles = pipeline.resolve_all(segments, _brand(), PROFILES, allow_brand_override=args.allow_brand_override)
         library = sounds.load_library(SOUNDS, ensure=True)
@@ -298,7 +328,7 @@ async def brand_preview(args) -> None:
                  keep_ranges=pipeline.truncate_ranges(entry["keep_ranges"], seconds))
     out = OUT / args.job / f"preview_{n:02d}.mp4"
     out.parent.mkdir(parents=True, exist_ok=True)
-    _compose_one(n, segments[n - 1], styles[n - 1], entry, library, out, work, True)
+    _compose_one(n, segments[n - 1], styles[n - 1], entry, library, out, work, True, pack)
     print(out)
 
 
@@ -314,6 +344,23 @@ def check_command(args) -> None:
               + ("  ->  reusable with credit" if lic["reuse_ok"] else ""))
         if licence.warning(lic["kind"]):
             print(f"   WARNING: {licence.warning(lic['kind'])}")
+
+
+def domains_command(args) -> None:
+    """List the content domains and what each one's gate requires."""
+    for name in domains.list_packs(DOMAINS):
+        pack = domains.load_pack(name, DOMAINS)
+        ver, ov = pack["verification"], pack["overlays"]
+        need = ver["text"] + [f"{k} (true)" for k in ver["true"]] + [f"{k} (inside the clip)" for k in ver["time_inside"]]
+        print(f"{name}: {pack['description']}")
+        print(f"   clips {pack['clip_seconds']['min']}-{pack['clip_seconds']['max']}s; verification: {', '.join(need) or 'none'}")
+        extras = [f"flags: {', '.join(ver['flags'])}"] if ver["flags"] else []
+        if ov["speaker"]:
+            extras.append("speaker line on screen")
+        if ov["disclaimer"]:
+            extras.append(f"disclaimer: {ov['disclaimer']}")
+        if extras:
+            print(f"   {'; '.join(extras)}")
 
 
 def frames_command(args) -> None:
@@ -370,13 +417,15 @@ def main() -> None:
             print(pipeline.profiles_text(_brand(), PROFILES))
         elif args.cmd == "sounds":
             sounds_command(args)
+        elif args.cmd == "domains":
+            domains_command(args)
         elif args.cmd == "frames":
             frames_command(args)
         elif args.cmd == "check":
             check_command(args)
         else:
             asyncio.run({"fetch": fetch, "render": render, "brand-preview": brand_preview}[args.cmd](args))
-    except (StyleError, SoundError, pipeline.PipelineError, freesound.FreesoundError, transcribe.TranscribeError) as exc:
+    except (StyleError, SoundError, DomainError, pipeline.PipelineError, freesound.FreesoundError, transcribe.TranscribeError) as exc:
         sys.exit(str(exc))
 
 
