@@ -1,0 +1,6 @@
+# working data: downloaded videos, models, transcripts, rendered clips (third-party footage)
+tmp/
+cache/
+jobs/
+out/
+vendor/
