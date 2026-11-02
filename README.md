@@ -1,4 +1,4 @@
-# supoclip-work
+# clipwright
 
 Turn a long video into short vertical clips with Claude Code as the clip picker. No API keys, no web app, no database.
 
@@ -20,7 +20,7 @@ you: "clip this <url>"
 
 ## Setup
 ```bash
-git clone <this repo> supoclip-work && cd supoclip-work
+git clone https://github.com/polymorphisma/clipwright && cd clipwright
 ./setup.sh        # builds the backend image from a pinned upstream commit, installs the skill
 ```
 
@@ -60,6 +60,7 @@ Cost: no API fees. It uses your Claude Code usage for the selection step only.
 - Only tested on YouTube sources. Local files, Twitch and Kick are untested.
 
 ## Legal
+- Not affiliated with SupoClip or Anthropic. Claude Code and SupoClip are their owners' products.
 - `clip.py` imports SupoClip's AGPL-3.0 code at run time, so this repo is licensed AGPL-3.0 too (see LICENSE).
 - Clips you make from someone else's video are still their footage. Get permission before posting them.
   Downloading from YouTube may breach its terms. You are responsible for what you clip and publish.
