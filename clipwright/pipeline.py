@@ -27,6 +27,11 @@ def build_parser() -> argparse.ArgumentParser:
     ck = sub.add_parser("check", help="read each video's licence and title without downloading it")
     ck.add_argument("urls", nargs="+", metavar="url")
 
+    so = sub.add_parser("sources", help="find candidate videos for a domain (no download); writes sources/<domain>.md and .json")
+    so.add_argument("domain")
+    so.add_argument("--query", action="append", default=[], metavar="Q", help="an extra search, repeatable")
+    so.add_argument("--limit", type=int, default=24, help="how many candidates to look up and list (default 24)")
+
     sub.add_parser("domains", help="list the content domains and what each one's gate requires")
     sub.add_parser("schema", help="print the style fields and bounds as JSON")
     sub.add_parser("profiles", help="list profiles with their resolved values")

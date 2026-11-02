@@ -6,6 +6,7 @@ Runs inside the supoclip-backend image, driven by ./clip. See README.md and `cli
     clip check <url> [<url> ...]     licence and title of candidate videos, no download
     clip render <job> segments.json  pass 1 (SupoClip cut and frame) then pass 2 (brand + sound)
     clip domains                     content domains (tech, health, mythology) and their gates
+    clip sources <domain>            find candidate videos for a domain (licence flag, ranked), no download
     clip schema | profiles           what style fields and presets exist
     clip brand-preview <job>         3 second sample from the cached pass 1
     clip frames <job> --segment N    contact sheet to choose each clip's layout from
@@ -24,7 +25,7 @@ from pathlib import Path
 from typing import Any, Dict, List
 
 from clipwright import (compose, domains, freesound, gate, layout, licence, pipeline, render_layout, sounds,
-                        style, transcribe)
+                        sources, style, tracker, transcribe)
 from clipwright.domains import DomainError
 from clipwright.sounds import SoundError
 from clipwright.style import StyleError
@@ -35,6 +36,8 @@ OUT = WORK / "out"
 SOUNDS = WORK / "sounds"
 PROFILES = WORK / "profiles"
 DOMAINS = WORK / "domains"
+SOURCES = WORK / "sources"
+TRACKER = WORK / "tracker" / "state.json"
 BRAND = WORK / "brand.json"
 FONTS = Path("/app/fonts")
 
@@ -346,6 +349,90 @@ def check_command(args) -> None:
             print(f"   WARNING: {licence.warning(lic['kind'])}")
 
 
+def _flat_entries(target: str, count: int) -> List[Dict[str, Any]]:
+    """Flat yt-dlp entries (no per-video lookup) for a search or a channel/playlist URL."""
+    import yt_dlp
+
+    search = not target.lower().startswith("http")
+    opts = {"quiet": True, "no_warnings": True, "extract_flat": True, "skip_download": True,
+            **({} if search else {"playlistend": count})}
+    with yt_dlp.YoutubeDL(opts) as ydl:
+        info = ydl.extract_info(f"ytsearch{count}:{target}" if search else target, download=False)
+    return list(info.get("entries") or [])
+
+
+class _QuietLogger:
+    """Keeps yt-dlp's own error lines out of the output; clip prints one short summary instead."""
+
+    def debug(self, msg): pass
+    def info(self, msg): pass
+    def warning(self, msg): pass
+    def error(self, msg): pass
+
+
+def _lookup(url: str):
+    """Licence, upload date and follower count of one video, or None if the lookup fails."""
+    try:
+        import yt_dlp
+
+        with yt_dlp.YoutubeDL({"quiet": True, "no_warnings": True, "skip_download": True,
+                               "logger": _QuietLogger()}) as ydl:
+            info = ydl.extract_info(url, download=False)
+        return {k: info.get(k) for k in ("license", "upload_date", "channel_follower_count")}
+    except Exception as exc:  # one video failing must not stop the list
+        _LOOKUP_ERRORS.append(str(exc))
+        return None
+
+
+_LOOKUP_ERRORS: List[str] = []
+
+
+def sources_command(args) -> None:
+    """Search YouTube for the domain's queries and watchlist, then write a ranked checklist."""
+    from concurrent.futures import ThreadPoolExecutor
+    from datetime import date, datetime
+
+    pack = domains.load_pack(args.domain, DOMAINS)
+    rules = pack["sources"]
+    found: List[Dict[str, Any]] = []
+    for target in list(rules["queries"]) + list(args.query) + list(rules["watchlist"]):
+        try:
+            entries = _flat_entries(target, rules["per_query"])
+        except Exception as exc:  # a failing query is reported, the rest still run
+            print(f"search failed for {target!r}: {exc}", file=sys.stderr)
+            continue
+        found += [c for c in (sources.candidate_from_flat(e) for e in entries) if c]
+        print(f"searched {target!r}: {len(entries)} results", file=sys.stderr)
+
+    seen = {p.name for p in JOBS.iterdir()} if JOBS.exists() else set()
+    try:
+        seen |= tracker.rejected_ids(tracker.load(TRACKER))
+    except tracker.TrackerError as exc:
+        print(f"tracker ignored: {exc}", file=sys.stderr)
+    shortlist = sources.select_for_enrichment(sources.prefilter(found, rules, seen, rules["watchlist"]), args.limit)
+    print(f"looking up the licence of {len(shortlist)} candidates...", file=sys.stderr)
+    with ThreadPoolExecutor(max_workers=4) as pool:
+        infos = list(pool.map(lambda c: _lookup(c["url"]), shortlist))
+    if _LOOKUP_ERRORS:
+        blocked = sum("not a bot" in e for e in _LOOKUP_ERRORS)
+        print(f"WARNING: the licence lookup failed for {len(_LOOKUP_ERRORS)} of {len(shortlist)} videos"
+              + (f" ({blocked} blocked by YouTube's bot check)" if blocked else "")
+              + ". They are listed as 'Licence not checked'; check them yourself before you rely on them.",
+              file=sys.stderr)
+    today = date.today()
+    ranked = sources.rank(sources.postfilter([sources.enrich(c, i, today) for c, i in zip(shortlist, infos)], rules))
+
+    SOURCES.mkdir(parents=True, exist_ok=True)
+    stamp = datetime.now().strftime("%Y-%m-%d %H:%M")
+    (SOURCES / f"{args.domain}.json").write_text(sources.to_json(ranked), encoding="utf-8")
+    (SOURCES / f"{args.domain}.md").write_text(sources.to_markdown(args.domain, ranked, stamp), encoding="utf-8")
+    print(f"{len(ranked)} candidates for {args.domain}: {SOURCES / (args.domain + '.md')}")
+    for c in ranked[:5]:
+        tag = "CC BY" if c["license_kind"] == "cc-by" else c["license_kind"]
+        views = f"{c['views']:,}" if c.get("views") is not None else "?"
+        print(f"  [{tag}] {c['title'][:70]} | {c['channel']} | {views} views")
+
+
 def domains_command(args) -> None:
     """List the content domains and what each one's gate requires."""
     for name in domains.list_packs(DOMAINS):
@@ -417,6 +504,8 @@ def main() -> None:
             print(pipeline.profiles_text(_brand(), PROFILES))
         elif args.cmd == "sounds":
             sounds_command(args)
+        elif args.cmd == "sources":
+            sources_command(args)
         elif args.cmd == "domains":
             domains_command(args)
         elif args.cmd == "frames":

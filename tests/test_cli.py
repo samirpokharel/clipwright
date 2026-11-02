@@ -64,6 +64,16 @@ class ParserTest(unittest.TestCase):
     def test_domains_command_parses(self):
         self.assertEqual(pipeline.build_parser().parse_args(["domains"]).cmd, "domains")
 
+    def test_sources_command_parses(self):
+        a = pipeline.build_parser().parse_args(["sources", "health", "--limit", "5", "--query", "x", "--query", "y"])
+        self.assertEqual((a.cmd, a.domain, a.limit, a.query), ("sources", "health", 5, ["x", "y"]))
+        d = pipeline.build_parser().parse_args(["sources", "tech"])
+        self.assertEqual((d.limit, d.query), (24, []))
+
+    def test_sources_needs_a_domain(self):
+        with self.assertRaises(SystemExit):
+            pipeline.build_parser().parse_args(["sources"])
+
     def test_frames_command_parses(self):
         p = pipeline.build_parser()
         a = p.parse_args(["frames", "job1", "--segment", "2", "--every", "2"])
