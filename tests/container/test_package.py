@@ -82,6 +82,21 @@ class PackageCommandTest(unittest.TestCase):
         readme = (upload / "README.md").read_text(encoding="utf-8")
         self.assertIn("permission", readme)
 
+    def test_a_missing_video_skips_that_clip_and_packages_the_rest(self):
+        job, out = WORK / "jobs" / self.JOB, WORK / "out" / self.JOB
+        proc, upload = self.run_package([self.good(), self.good(title="Second clip")])
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+        for stale in upload.iterdir():
+            if stale.is_dir():
+                shutil.rmtree(stale)
+        next(out.glob("01_*.mp4")).unlink()  # clip 1's video is gone, its manifest entry remains
+        proc = subprocess.run([sys.executable, "/work/clip.py", "package", self.JOB], capture_output=True, text=True, cwd="/app")
+        self.assertNotEqual(proc.returncode, 0)
+        self.assertNotIn("Traceback", proc.stderr)
+        self.assertIn("segment 1", proc.stderr)
+        self.assertEqual([p.name for p in upload.iterdir() if p.is_dir()], ["02_second_clip"])
+        self.assertTrue((upload / "README.md").exists())
+
     def test_ui_edits_win_and_renaming_removes_the_old_folder(self):
         proc, upload = self.run_package([self.good()], {"1": {"title": "A new title", "cover": "b"}})
         self.assertEqual(proc.returncode, 0, proc.stderr)

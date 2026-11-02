@@ -4,6 +4,10 @@
 <nav class="tabs" aria-label="Domain">
   {% for d in domains %}<a href="/sources?domain={{ d }}"{% if d == domain %} aria-current="page"{% endif %}>{{ d }}</a>{% endfor %}
 </nav>
+<nav class="tabs" aria-label="Status">
+  <a href="/sources?domain={{ domain }}"{% if not status %} aria-current="page"{% endif %}>all</a>
+  {% for s in all_statuses %}<a href="/sources?domain={{ domain }}&amp;status={{ s }}"{% if s == status %} aria-current="page"{% endif %}>{{ s }}</a>{% endfor %}
+</nav>
 <section class="toolbar">
   <form hx-post="/sources/search" hx-target="#search-status" hx-swap="innerHTML">
     <input type="hidden" name="domain" value="{{ domain }}">

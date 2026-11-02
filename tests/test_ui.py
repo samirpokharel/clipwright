@@ -176,6 +176,52 @@ class UiTest(unittest.TestCase):
         self.assertIn("A fine title", html)
         self.assertIn("/media/J1/01_clip_0000-0020.mp4", html)
 
+    # damaged files and the sources list (final review) ----------------
+    def test_corrupt_post_edits_is_not_overwritten(self):
+        path = self.root / "jobs/J1/post_edits.json"
+        path.write_text('{"2": {"title": "other clip edit"}, BROKEN', encoding="utf-8")
+        before = path.read_text(encoding="utf-8")
+        r = self.client.post("/clips/J1/1/post", data={"title": "t", "description": "d", "hashtags": "#a #b #c"})
+        self.assertEqual(r.status_code, 409)
+        self.assertIn("post_edits.json", r.text)
+        self.assertEqual(path.read_text(encoding="utf-8"), before)
+
+    def test_corrupt_tracker_gives_a_readable_message(self):
+        (self.root / "tracker").mkdir()
+        (self.root / "tracker/state.json").write_text("{not json", encoding="utf-8")
+        for method, url, data in (("get", "/sources?domain=tech", None), ("get", "/clips", None),
+                                  ("post", "/sources/idA", {"status": "approved"})):
+            with self.subTest(url=url):
+                r = getattr(self.client, method)(url, **({"data": data} if data else {}))
+                self.assertEqual(r.status_code, 500)
+                self.assertIn("fix or move it aside", r.text)
+        self.assertEqual((self.root / "tracker/state.json").read_text(encoding="utf-8"), "{not json")
+
+    def test_sources_stay_listed_after_a_later_search_drops_them(self):
+        self.client.get("/sources?domain=tech")
+        self.client.post("/sources/idA", data={"status": "approved", "note": "emailed"})
+        (self.root / "sources/tech.json").write_text(json.dumps([cand("idB", "Second talk")]), encoding="utf-8")
+        html = self.client.get("/sources?domain=tech").text
+        self.assertIn("First talk", html)
+        self.assertIn("emailed", html)
+        self.assertIn("Second talk", html)
+
+    def test_status_filter(self):
+        self.client.get("/sources?domain=tech")
+        self.client.post("/sources/idA", data={"status": "approved"})
+        html = self.client.get("/sources?domain=tech&status=approved").text
+        self.assertIn("First talk", html)
+        self.assertNotIn("Second talk", html)
+        self.assertEqual(self.client.get("/sources?domain=tech&status=bogus").status_code, 400)
+
+    def test_video_found_in_two_domains_stays_in_the_first(self):
+        (self.root / "sources/health.json").write_text(json.dumps([cand("idA", "First talk")]), encoding="utf-8")
+        self.client.get("/sources?domain=tech")
+        self.client.post("/sources/idA", data={"status": "approved"})
+        self.client.get("/sources?domain=health")
+        self.assertIn("idA", self.client.get("/sources/tech/commands").text)
+        self.assertNotIn("idA", self.client.get("/sources/health/commands").text)
+
     # whole pages -------------------------------------------------------
     def test_pages_load_no_external_assets(self):
         for url in ("/sources?domain=tech", "/clips"):

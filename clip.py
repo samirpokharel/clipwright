@@ -465,12 +465,18 @@ def package_command(args) -> None:
             continue
         post = package.build_post(merged, state=state, pack=pack, credits=entry.get("credits", []))
         folder = upload / package.slug(post["title"], n)
-        for old in upload.glob(f"{n:02d}_*"):  # the title changed: drop the old folder of this clip
-            if old != folder:
-                shutil.rmtree(old)
-        package.write_clip_package(folder, Path(entry["file"]), post,
-                                   package.cover_times(float(entry["duration"]), merged.get("thumbnail_time")),
-                                   merged.get("cover", "a"))
+        try:
+            for old in upload.glob(f"{n:02d}_*"):  # the title changed: drop the old folder of this clip
+                if old != folder:
+                    shutil.rmtree(old)
+            package.write_clip_package(folder, Path(entry["file"]), post,
+                                       package.cover_times(float(entry["duration"]), merged.get("thumbnail_time")),
+                                       merged.get("cover", "a"))
+        except (OSError, subprocess.CalledProcessError) as exc:  # a missing video or a failed frame grab
+            print(f"segment {n}: could not package ({type(exc).__name__}: {exc})", file=sys.stderr)
+            shutil.rmtree(folder, ignore_errors=True)  # no half-built folder that looks like a package
+            skipped.append(n)
+            continue
         made.append((n, post["title"], folder))
         print(f"{folder}  {post['title']}")
     if made:

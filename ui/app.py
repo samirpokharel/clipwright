@@ -19,7 +19,7 @@ from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional
 
 from fastapi import FastAPI, Form, HTTPException, Request
-from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse, Response
+from fastapi.responses import FileResponse, HTMLResponse, PlainTextResponse, RedirectResponse, Response
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
@@ -63,6 +63,10 @@ def create_app(root: Path = ROOT, runner: Optional[Runner] = None) -> FastAPI:
     app = FastAPI(title="Clipwright review")
     app.state.search_thread = None
     app.mount("/static", StaticFiles(directory=HERE / "static"), name="static")
+    @app.exception_handler(tracker.TrackerError)
+    def damaged_tracker(request: Request, exc: tracker.TrackerError) -> PlainTextResponse:
+        return PlainTextResponse(str(exc), status_code=500)
+
     templates = Jinja2Templates(directory=str(HERE / "templates"))
     templates.env.filters["hours"] = _hours
     templates.env.filters["number"] = lambda v: "?" if v is None else f"{v:,}"
@@ -114,7 +118,12 @@ def create_app(root: Path = ROOT, runner: Optional[Runner] = None) -> FastAPI:
                                "verified": bool(clips) and all(m == "ok" for m in marks)}
         tracker.sync_statuses(state, facts)
 
-    def source_rows(domain: str) -> List[Dict[str, Any]]:
+    def source_rows(domain: str, status: str = "") -> List[Dict[str, Any]]:
+        """Every source the tracker holds for this domain, the latest search results first.
+
+        The search file only feeds new candidates in: a video that a later search leaves out
+        (already fetched or rejected) must not vanish with its permission and note.
+        """
         cands = read_json(root / "sources" / f"{domain}.json", [])
         with lock:
             state = load_state()
@@ -122,7 +131,10 @@ def create_app(root: Path = ROOT, runner: Optional[Runner] = None) -> FastAPI:
                 tracker.upsert_source(state, c, domain, _now())
             sync(state)
             tracker.save(tracker_path, state)
-        return [state["sources"][c["id"]] for c in cands]
+        position = {c["id"]: i for i, c in enumerate(cands)}
+        rows = [r for r in state["sources"].values() if r.get("domain") == domain]
+        rows.sort(key=lambda r: (position.get(r["id"], len(position)), r.get("found_at", "")))
+        return [r for r in rows if not status or r.get("status") == status]
 
     def clip_view(job: str, entry: Dict[str, Any], state: Dict[str, Any]) -> Dict[str, Any]:
         n = clip_number(entry)
@@ -161,10 +173,13 @@ def create_app(root: Path = ROOT, runner: Optional[Runner] = None) -> FastAPI:
         return RedirectResponse("/sources")
 
     @app.get("/sources", response_class=HTMLResponse)
-    def sources_page(request: Request, domain: str = "tech") -> HTMLResponse:
+    def sources_page(request: Request, domain: str = "tech", status: str = "") -> HTMLResponse:
         need_domain(domain)
-        return render(request, "sources.html", domain=domain, domains=domain_names(), rows=source_rows(domain),
-                      statuses=UI_STATUSES, permissions=tracker.PERMISSIONS, search=dict(search))
+        if status and status not in tracker.SOURCE_STATUSES:
+            raise HTTPException(400, f"status must be one of {', '.join(tracker.SOURCE_STATUSES)}")
+        return render(request, "sources.html", domain=domain, domains=domain_names(), rows=source_rows(domain, status),
+                      statuses=UI_STATUSES, permissions=tracker.PERMISSIONS, search=dict(search),
+                      status=status, all_statuses=tracker.SOURCE_STATUSES)
 
     @app.post("/sources/search", response_class=HTMLResponse)
     def start_search(request: Request, domain: str = Form(...)) -> HTMLResponse:
@@ -260,7 +275,14 @@ def create_app(root: Path = ROOT, runner: Optional[Runner] = None) -> FastAPI:
             raise HTTPException(404, f"no clip {n} in {job}")
         path = root / "jobs" / job / "post_edits.json"
         with lock:
-            edits = read_json(path, {})
+            edits = {}
+            if path.exists():  # never replace a damaged file: it still holds the other clips' edits
+                try:
+                    edits = json.loads(path.read_text(encoding="utf-8"))
+                    if not isinstance(edits, dict):
+                        raise ValueError("not an object")
+                except (OSError, ValueError):
+                    raise HTTPException(409, f"{path} cannot be read; fix or move it aside, then save again") from None
             edits[str(n)] = {"title": title, "description": description,
                              "hashtags": [t for t in re.split(r"[,\s]+", hashtags.strip()) if t],
                              "cover": cover if cover in package.COVER_LETTERS else "a"}

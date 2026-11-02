@@ -87,6 +87,12 @@ class SourcesTest(unittest.TestCase):
         self.assertEqual((row["views"], row["title"]), (2000, "Renamed"))
         self.assertEqual(row["found_at"], NOW)
 
+    def test_upsert_keeps_the_first_domain(self):
+        state = {"sources": {}, "clips": {}}
+        tracker.upsert_source(state, cand(), "tech", NOW)
+        row = tracker.upsert_source(state, cand(), "health", LATER)
+        self.assertEqual(row["domain"], "tech")
+
     def test_invalid_values_rejected(self):
         state = {"sources": {}, "clips": {}}
         tracker.upsert_source(state, cand(), "tech", NOW)

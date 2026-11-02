@@ -51,10 +51,10 @@ def upsert_source(state: Dict[str, Any], cand: Dict[str, Any], domain: str, now:
     video_id = cand["id"]
     row = state["sources"].get(video_id)
     if row is None:
-        row = {"status": "found", "permission": "unchecked", "note": "", "found_at": now}
+        row = {"status": "found", "permission": "unchecked", "note": "", "found_at": now, "domain": domain}
         state["sources"][video_id] = row
     row.update(cand)
-    row["domain"] = domain
+    row.setdefault("domain", domain)  # a video found under two domains stays under the first
     row["updated_at"] = now
     return row
 
