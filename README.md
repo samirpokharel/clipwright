@@ -46,6 +46,7 @@ Local files must live inside this folder (it is mounted as `/work`).
 | `clip render <job> <segments.json>` | Pass 1 then pass 2. Flags: `--only N [N ...]`, `--recompose`, `--exact`, `--clip-length`, `--max-seconds`, `--original`, `--no-subtitles`, `--no-music/--no-whoosh/--no-pop/--no-sting`, `--allow-brand-override`. |
 | `clip render ... --recompose` | Reuse the cached pass 1 and redo only pass 2. Use it to try style and sound changes. |
 | `clip brand-preview <job> [--segment N]` | Render a 3 second sample into `out/<job>/preview_NN.mp4`. |
+| `clip frames <job> --segment N [--every 4]` | Contact sheet of a segment (or `--from/--to`), one labelled frame every few seconds. Used to choose layouts from what is on screen. |
 | `clip schema` | Print every style field and its bounds as JSON. |
 | `clip profiles` | List the profiles with their resolved values. |
 | `clip sounds add\|list` | Manage the sound library. |
@@ -61,7 +62,13 @@ Style is resolved in three layers, later layers winning: **`brand.json`** (ident
 - **Per-clip `style`** adjusts within bounds, for example `{"profile": "explainer", "caption": {"words_per_line": 2}, "sound": {"music": "off"}}`. Run `clip schema` for all fields.
 - **`key_words`** per segment are highlighted in the accent colour and trigger a quiet pop. **`source_music: true`** skips the music bed when the source already has music.
 
-The layout (a wide shot as a strip over a blurred copy of itself) is still SupoClip's. Per-shot layout is planned work, not part of this stage.
+## Layout
+A 16:9 source in a 9:16 video is either **filled** (a full-height portrait crop around the speaker) or **fitted** (the whole frame over a blurred copy). `layout.mode` is `auto`, `fill` or `fit` per clip, and a segment's `layout_ranges` mix them over time, for example `[{"from": "04:05.5", "to": "04:13.5", "layout": "fill"}]`.
+
+- **Why you decide:** SupoClip's own planner (`auto` with no ranges) chooses from face detection. On a wide presenter shot it found a face in only 18% of frames (it needs 25%), so it showed a thin strip. Claude Code looks at `clip frames` contact sheets instead: presenter to camera fills, charts, text, news and two-person shots fit.
+- **Boundaries** snap to the nearest real shot change within 1 second, so rough times are enough.
+- **How it renders:** clips with a fill or fit layout are framed by Clipwright's own ffmpeg step, using SupoClip's face tracker only to place the crop. `auto` clips go through SupoClip unchanged. Changing a clip's layout needs a full render, not `--recompose`, and the tool tells you.
+- **Trade-off:** fill keeps about a third of the frame width, and the title block can touch a presenter's hair for a few seconds.
 
 ## Sound
 Per clip, as each sound's level (`off`, `low`, `normal`) allows: a music bed that ducks under speech, a whoosh on shot changes (at most one per 4 s), pops on key words (at most 3), an intro sting and an outro tone. The final mix is normalised to about -14 LUFS (measured -14.4 to -15.4 on 7 clips) with a -3 dB true-peak ceiling, so encoded peaks stay below -2 dBFS.

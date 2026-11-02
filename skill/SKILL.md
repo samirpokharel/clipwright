@@ -21,17 +21,20 @@ progress bar and sound. No Docker stack, DB, or API key needed.
    `jobs/<job>/state.json` (title, channel, description, categories, tags when available).
 4. **Choose clips and a style** for each (rules below). Run `clip profiles` and `clip schema` if you
    need the exact presets and bounds.
-5. **Write** `jobs/<job>/segments.json` (schema below).
-6. **Render:** `clip render <job> /work/jobs/<job>/segments.json`. An invalid style stops the run
+5. **Look before choosing a layout:** for every clip run `clip frames <job> --segment N --every 4`
+   (needs a draft `segments.json`), then Read the PNG it prints. See "Choosing the layout" below.
+6. **Write** `jobs/<job>/segments.json` (schema below).
+7. **Render:** `clip render <job> /work/jobs/<job>/segments.json`. An invalid style stops the run
    before anything renders, with the segment number and field.
-7. **Verify** before reporting: `ffprobe` one clip (1080x1920, H.264 plus AAC), then view frames at
+8. **Verify** before reporting: `ffprobe` one clip (1080x1920, H.264 plus AAC), then view frames at
    about 1.5 s (title) and mid-clip (captions, key-word colour), and confirm the title does not cover
-   the speaker's face.
-8. **Tweak loop** (do not re-render everything): edit `style` or `key_words` in `segments.json`, then
+   the speaker's face. For clips with a layout, view one frame inside each fill run and each fit run.
+9. **Tweak loop** (do not re-render everything): edit `style` or `key_words` in `segments.json`, then
    `clip render <job> <segments> --recompose --only N` redoes pass 2 for segment N in about half a
    minute. `clip brand-preview <job> --segment N` renders a 3 second sample. Changing a
-   segment's `start_time` or `end_time` needs a render without `--recompose`.
+   segment's `start_time`, `end_time` or layout needs a render without `--recompose` (it tells you).
 
+Other commands: `clip frames` (contact sheet), `clip schema`, `clip profiles`, `clip sounds`.
 Render flags: `--only N [N ...]`, `--recompose`, `--exact` (use my timestamps verbatim; default snaps
 openings to sentence starts), `--clip-length short|medium|long`, `--max-seconds N`, `--original`
 (keep aspect), `--no-subtitles`, `--no-music --no-whoosh --no-pop --no-sting`, and
@@ -53,6 +56,34 @@ unless the user asks). Output: `__CLIP_DIR__/out/<job>/NN_*.mp4`, `manifest.json
 - `text` is verbatim from the range. No fabrication. Accuracy beats "viral".
 - `hook_title`: 3-9 words, plain text, in the transcript's language, grounded in the clip,
   no hashtags/emojis/quotes. It becomes the brand title block.
+
+## Choosing the layout
+
+The picture is a 16:9 frame inside a 9:16 video. Without a choice, SupoClip's own planner decides per
+shot from face detection. It misses a presenter who looks down or sits far from the camera, then shows
+the whole frame as a thin strip over blur. So you decide, from what is on screen.
+
+1. Run `clip frames <job> --segment N --every 4` and Read the PNG. Labels are source times.
+2. Sort each shot:
+   - **fill** (full-height portrait crop around the face): a person talking to camera, centred,
+     with nothing important at the sides.
+   - **fit** (the whole frame over blur): charts, diagrams, slides, tweets, articles, filings, news
+     footage, anything with text or a lower-third, two people side by side, wide shots of a room.
+3. Set it in `segments.json`:
+   - Whole clip is one presenter: `"style": {"layout": {"mode": "fill"}}` (the `interview` profile
+     does this by default).
+   - Mostly cutaways with the presenter now and then: leave `mode` as `auto` and add
+     `"layout_ranges": [{"from": "04:05.5", "to": "04:13.5", "layout": "fill"}]`. Time outside a
+     range shows the whole frame.
+   - No presenter at all (charts, screen recordings): change nothing. `auto` with no ranges keeps
+     SupoClip's planner, which also zooms into text so it stays readable.
+4. Range times are source times (as in the transcript), `MM:SS` or `MM:SS.s`. Frames are seconds
+   apart, so each boundary snaps to the nearest real shot change within 1 second. If a boundary
+   matters, look closer with `clip frames <job> --from 04:04 --to 04:08 --every 0.5`.
+
+Fill keeps only about a third of the frame width. Never fill a shot that has text, a lower-third or
+two people. A filled presenter puts his head near the top, so the title can touch his hair for a few
+seconds; if it covers a face, use `"title": {"size": "small"}`.
 
 ## Choosing the style
 
@@ -95,10 +126,11 @@ speech (song lines, "[Music]"). The music bed is then skipped.
   "hook_title": "Why most founders quit too early",
   "key_words": ["10 million", "quit"],
   "source_music": false,
-  "style": {"profile": "explainer", "caption": {"words_per_line": 3}}
+  "style": {"profile": "explainer", "caption": {"words_per_line": 3}},
+  "layout_ranges": [{"from": "00:20", "to": "00:31", "layout": "fill"}]
 }]
 ```
-Scores are 0-25 each, total is their sum (0-100). `key_words`, `source_music` and `style` are optional.
+Scores are 0-25 each, total is their sum (0-100). `key_words`, `source_music`, `style` and `layout_ranges` are optional.
 
 ## Sounds and licensing
 

@@ -233,6 +233,15 @@ def schema() -> Dict[str, Any]:
     return {
         "usage": "Segment 'style': {\"profile\": name, caption: {...}, title: {...}, progress_bar: {...}, sound: {...}}",
         "fields": copy.deepcopy(BOUNDS),
+        "segment_fields": {
+            "hook_title": "3-9 word headline shown in the brand title block",
+            "key_words": "2-4 spoken words or phrases, highlighted in the accent colour with a quiet pop",
+            "source_music": "true when the source already has music under the speech; skips the music bed",
+            "style": "profile name plus bounded overrides, using the fields above",
+            "layout_ranges": "list of {\"from\": \"MM:SS\", \"to\": \"MM:SS\", \"layout\": \"fill\"|\"fit\"} in source time; "
+                             "fill = full-height portrait crop around the speaker, fit = the whole frame over blur; "
+                             "time outside any range takes layout.mode, and with mode auto it shows the whole frame",
+        },
         "locked": list(LOCKED),
         "levels": "low plays at mix.low_offset_db below normal; off disables the sound",
     }

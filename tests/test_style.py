@@ -165,6 +165,13 @@ class SchemaTest(unittest.TestCase):
             self.assertIn(locked, s["locked"])
         json.dumps(s)  # must be JSON serialisable
 
+    def test_schema_describes_segment_level_fields_including_layout_ranges(self):
+        seg = style.schema()["segment_fields"]
+        for name in ("hook_title", "key_words", "source_music", "style", "layout_ranges"):
+            self.assertIn(name, seg)
+        self.assertIn("fill", seg["layout_ranges"])
+        self.assertIn("fit", seg["layout_ranges"])
+
     def test_schema_documents_the_spec_table(self):
         f = style.schema()["fields"]
         self.assertEqual(f["caption.words_per_line"]["min"], 1)

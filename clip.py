@@ -6,6 +6,7 @@ Runs inside the supoclip-backend image, driven by ./clip. See README.md and `cli
     clip render <job> segments.json  pass 1 (SupoClip cut and frame) then pass 2 (brand + sound)
     clip schema | profiles           what style fields and presets exist
     clip brand-preview <job>         3 second sample from the cached pass 1
+    clip frames <job> --segment N    contact sheet to choose each clip's layout from
     clip sounds add|list             manage the sound library
 
 Claude Code does the segment selection and style choice between fetch and render.

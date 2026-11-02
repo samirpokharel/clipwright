@@ -1,6 +1,6 @@
 # Clipwright stage 1: brand pack and sound
 
-Status: draft for review. Written 2026-11-02. Scope: stage 1 only. Stage 2 (per-shot layout, push-in motion) is described in the last section and is not built here.
+Status: built 2026-11-02. Scope: stage 1 (brand and sound) plus the layout work of stage 2, described in section 12. Push-in motion and a designed card layout are not built.
 
 ## 1. Problem and goal
 
@@ -303,9 +303,29 @@ The existing manual flow (render a real clip, extract frames, look at them) stay
 
 Open question, deferred to stage 2: whether a slow push-in belongs in pass 2 (possible with an ffmpeg zoom on the framed video) or in layout code.
 
-## 12. Stage 2 (not in this spec)
+## 12. Stage 2: layout (built 2026-11-02, after stage 1)
 
-Per-shot layout (fill crop for faces, designed card for diagrams and slides) and push-in motion. It begins with a short spike that reads SupoClip's `media/reframing.py` and its layout modules to answer: can fit-versus-crop be steered per shot, and can face boxes be read out? The answer chooses between a vendored patch and an own compositor. `compose.py` takes a layout parameter for title placement so stage 1 needs no rework.
+Stage 1 left the framing to SupoClip. Stage 2 lets Claude Code choose per clip, because SupoClip's planner is unreliable on wide presenter shots.
+
+**Finding that shaped it.** SupoClip classifies each shot as `face` (a tracked, filled crop) or `fit` (whole frame over blur) from face detection. On a wide shot of a presenter it detected a face in 11 of 60 sampled frames (18%), below the 25% it needs, so it showed a thin strip. The same count came back at analysis widths of 480, 960 and 1440 px, and lowering the threshold from 0.25 to 0.05 moved the filled time from 4.3 s to 4.7 s of 20 s. So the planner cannot be fixed by tuning, and this spec's earlier plan (a spike on steering the planner) was replaced by explicit control.
+
+**Design.**
+- `layout.mode` in the style: `auto` (SupoClip's planner, unchanged), `fill` (full-height portrait crop around the speaker) or `fit` (whole frame over blur). The `interview` profile defaults to `fill`.
+- A segment may add `layout_ranges`: a list of `{"from", "to", "layout"}` in source time (`MM:SS` or `MM:SS.s`), layout `fill` or `fit`. Ranges are validated with the rest of the style (inside the segment, no overlap, from before to). Time outside every range takes the mode, and with mode `auto` it shows the whole frame.
+- A clip with mode other than `auto`, or with ranges, is framed by Clipwright (`clipwright/layout.py` and `render_layout.py`): the same single source range SupoClip would render (same sentence snapping and limits), cut and framed by one ffmpeg run. SupoClip's face tracker only places the crop (median face centre per fill run, the middle of the frame if none). `auto` clips go through SupoClip as before. No SupoClip file is modified.
+- Each internal boundary snaps to the nearest shot change within 1 second, because ranges are chosen from frames seconds apart.
+- `clip frames <job> --segment N` writes a contact sheet (a labelled frame every few seconds) so Claude Code can sort shots: presenter to camera fills, charts, text, news and multi-person shots fit.
+- The pass-1 cache records the layout, and `--recompose` refuses to reuse a pass 1 whose layout changed.
+
+**Measured.** On a presenter shot with a photo cutaway, the fit run's top band is blur (sharpness ratio 0.01 against 0.46 to 0.60 for the fill run). On the three Drumeo clips the layout plan was fit then fill then fit around the presenter's real shots. The Code Report clips contain no presenter-to-camera shots, so they stay `auto`.
+
+**Limits.**
+- Fill keeps about a third of the frame width (606 of 1920 px).
+- The crop is static per run, so a presenter who leans far to one side can drift toward the crop edge.
+- `fit` here has no readability zoom into text, which SupoClip's own compositor has under `auto`, so text-heavy clips are better left on `auto`.
+- The title block can touch a filled presenter's hair for its first seconds.
+- Tracking quality depends on SupoClip's detector, which found 11 to 131 detections per clip. The median needs only a few.
+- Not built: a designed card layout, push-in motion, and per-shot automatic classification.
 
 ## 13. Licensing and responsibility
 
