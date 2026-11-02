@@ -1,0 +1,32 @@
+<article class="clip" id="clip-{{ c.job }}-{{ c.n }}">
+  <div class="player"><video controls preload="metadata" src="/media/{{ c.job }}/{{ c.file }}"></video></div>
+  <div class="detail">
+    <h3>Clip {{ c.n }}: {{ c.hook_title or '(no title)' }}
+      <span class="badge m-{{ c.mark or 'none' }}">{{ {'ok': 'Marked OK', 'fix': 'Needs fix'}.get(c.mark, 'Not reviewed') }}</span></h3>
+    {% if c.domain %}<p class="meta">Domain: {{ c.domain }}</p>{% endif %}
+    {% for p in c.gate_problems %}<p class="problem">{{ p }}</p>{% endfor %}
+    {% if c.verification %}
+    <dl class="ver">{% for k, v in c.verification.items() %}<dt>{{ k }}</dt><dd>{% if v is iterable and v is not string %}{{ v|join(', ') or '(none)' }}{% else %}{{ v }}{% endif %}</dd>{% endfor %}</dl>
+    {% endif %}
+    {% if c.commentary %}<p class="meta">Commentary: {{ c.commentary }}</p>{% endif %}
+    <form hx-post="/clips/{{ c.job }}/{{ c.n }}/post" hx-target="#clip-{{ c.job }}-{{ c.n }}" hx-swap="outerHTML">
+      <label>Title <input type="text" name="title" value="{{ c.post.title }}"></label>
+      <label>Description <textarea name="description" rows="4">{{ c.post.description }}</textarea></label>
+      <label>Hashtags <input type="text" name="hashtags" value="{{ c.post.hashtags }}"></label>
+      {% if c.covers %}
+      <fieldset><legend>Cover</legend>
+        {% for letter, url in c.covers.items() %}
+        <label class="cover"><input type="radio" name="cover" value="{{ letter }}"{% if c.post.cover == letter %} checked{% endif %}><img src="{{ url }}" alt="Cover {{ letter }}" loading="lazy"></label>
+        {% endfor %}
+      </fieldset>
+      {% else %}<input type="hidden" name="cover" value="{{ c.post.cover }}"><p class="meta">Cover images appear after you build the package.</p>{% endif %}
+      {% for p in c.post_problems %}<p class="problem">{{ p }}</p>{% endfor %}
+      <button type="submit">Save post text</button>
+    </form>
+    <form class="mark" hx-post="/clips/{{ c.job }}/{{ c.n }}/mark" hx-target="#clip-{{ c.job }}-{{ c.n }}" hx-swap="outerHTML">
+      <input type="text" name="note" value="{{ c.note }}" placeholder="Note" aria-label="Note">
+      <button name="mark" value="ok">Mark OK</button>
+      <button name="mark" value="fix" class="danger">Needs fix</button>
+    </form>
+  </div>
+</article>

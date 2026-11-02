@@ -1,0 +1,3 @@
+{% if unmarked %}<p class="problem">Mark these clips OK first: {{ unmarked|join(', ') }}.</p>
+{% else %}<pre class="output">{{ result.output }}</pre>
+<p class="{{ 'muted' if result.code == 0 else 'problem' }}">{{ 'Package built. Reload to see the cover images.' if result.code == 0 else 'Packaging reported problems (see above).' }}</p>{% endif %}

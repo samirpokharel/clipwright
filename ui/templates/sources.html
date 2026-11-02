@@ -1,0 +1,23 @@
+{% extends "base.html" %}
+{% block main %}
+<h1>Sources</h1>
+<nav class="tabs" aria-label="Domain">
+  {% for d in domains %}<a href="/sources?domain={{ d }}"{% if d == domain %} aria-current="page"{% endif %}>{{ d }}</a>{% endfor %}
+</nav>
+<section class="toolbar">
+  <form hx-post="/sources/search" hx-target="#search-status" hx-swap="innerHTML">
+    <input type="hidden" name="domain" value="{{ domain }}">
+    <button type="submit">Search for {{ domain }} videos</button>
+  </form>
+  <div id="search-status" aria-live="polite">{% include "_search_status.html" %}</div>
+</section>
+<p class="muted">Search finds candidates only. Nothing here is cleared: check the creator's permission yourself, then approve.</p>
+<div class="list">
+  {% for r in rows %}{% include "_row.html" %}{% else %}<p>No candidates yet. Press Search.</p>{% endfor %}
+</div>
+<section class="commands">
+  <h2>Fetch commands for approved videos</h2>
+  <div hx-get="/sources/{{ domain }}/commands" hx-trigger="load, click from:#refresh-cmds" hx-swap="innerHTML"></div>
+  <button id="refresh-cmds" type="button" class="ghost">Refresh</button>
+</section>
+{% endblock %}

@@ -1,0 +1,6 @@
+#!/usr/bin/env bash
+# Starts the local review UI (sources, clip review, tracking) at http://127.0.0.1:8770/. See README.md.
+set -euo pipefail
+HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+cd "$HERE"
+exec uv run ui/app.py

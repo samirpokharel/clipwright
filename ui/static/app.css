@@ -1,0 +1,51 @@
+:root {
+  --bg: #f6f5f1; --surface: #ffffff; --text: #1d1d1b; --muted: #5d5d57; --line: #dad8d0;
+  --accent: #b88700; --accent-text: #ffffff; --danger: #a4262c; --ok: #1d6b3a; --focus: #0b57d0;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #161614; --surface: #20201d; --text: #ecebe6; --muted: #a9a79d; --line: #3a3934;
+    --accent: #f0b800; --accent-text: #161614; --danger: #ff8a8f; --ok: #6fd08f; --focus: #8ab4f8;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #161614; --surface: #20201d; --text: #ecebe6; --muted: #a9a79d; --line: #3a3934;
+  --accent: #f0b800; --accent-text: #161614; --danger: #ff8a8f; --ok: #6fd08f; --focus: #8ab4f8;
+}
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--bg); color: var(--text); font: 16px/1.5 system-ui, sans-serif; }
+main { max-width: 64rem; margin: 0 auto; padding: 1rem 16px 4rem; }
+.bar { display: flex; gap: 1.5rem; align-items: center; padding: .75rem 16px; background: var(--surface); border-bottom: 1px solid var(--line); }
+.bar nav, .tabs { display: flex; gap: .5rem; flex-wrap: wrap; }
+a { color: var(--text); }
+nav a, .tabs a { padding: .25rem .75rem; border: 1px solid var(--line); border-radius: 999px; text-decoration: none; }
+nav a[aria-current], .tabs a[aria-current] { background: var(--accent); color: var(--accent-text); border-color: var(--accent); }
+:focus-visible { outline: 3px solid var(--focus); outline-offset: 2px; }
+h1 { font-size: 1.5rem; } h2 { font-size: 1.2rem; } h3 { font-size: 1rem; margin: 0; }
+button { font: inherit; padding: .4rem .9rem; border-radius: 6px; border: 1px solid var(--accent); background: var(--accent); color: var(--accent-text); cursor: pointer; }
+button.ghost { background: transparent; color: var(--text); border-color: var(--line); }
+button.danger { background: transparent; color: var(--danger); border-color: var(--danger); }
+input[type=text], select, textarea { font: inherit; width: 100%; padding: .35rem .5rem; color: var(--text); background: var(--bg); border: 1px solid var(--line); border-radius: 6px; }
+label { display: block; margin: .5rem 0; font-size: .9rem; color: var(--muted); }
+.toolbar { display: flex; flex-wrap: wrap; gap: 1rem; align-items: center; margin: 1rem 0 .25rem; }
+.muted, .meta { color: var(--muted); margin: .25rem 0; font-size: .9rem; }
+.problem { color: var(--danger); margin: .25rem 0; font-size: .9rem; font-weight: 600; }
+.row, .clip, .job > header { background: var(--surface); border: 1px solid var(--line); border-radius: 10px; padding: 1rem; margin: .75rem 0; }
+.row .head, .job > header { display: flex; justify-content: space-between; gap: 1rem; align-items: flex-start; }
+.controls { display: grid; grid-template-columns: 9rem 1fr; gap: .5rem 1rem; align-items: end; margin-top: .5rem; }
+.actions { grid-column: 1 / -1; display: flex; gap: .5rem; flex-wrap: wrap; }
+.badge { font-size: .75rem; padding: .1rem .6rem; border-radius: 999px; border: 1px solid var(--line); white-space: nowrap; }
+.s-approved, .m-ok { border-color: var(--ok); color: var(--ok); } .s-rejected, .m-fix { border-color: var(--danger); color: var(--danger); }
+.licence.reuse { color: var(--ok); }
+.preview iframe { width: 100%; aspect-ratio: 16 / 9; border: 0; margin-bottom: .5rem; }
+.clip { display: grid; grid-template-columns: minmax(10rem, 16rem) 1fr; gap: 1rem; }
+.clip video { width: 100%; max-height: 28rem; background: #000; border-radius: 8px; }
+.ver { display: grid; grid-template-columns: max-content 1fr; gap: .1rem .75rem; font-size: .85rem; margin: .5rem 0; }
+.ver dt { color: var(--muted); } .ver dd { margin: 0; }
+fieldset { border: 1px solid var(--line); border-radius: 8px; display: flex; gap: .75rem; flex-wrap: wrap; }
+.cover img { width: 6rem; border-radius: 6px; display: block; }
+.mark { display: flex; gap: .5rem; margin-top: .75rem; align-items: center; }
+.mark input { flex: 1; }
+pre.output { white-space: pre-wrap; font-size: .8rem; background: var(--bg); padding: .5rem; border-radius: 6px; }
+textarea#cmds { font-family: ui-monospace, monospace; font-size: .8rem; }
+@media (max-width: 40rem) { .clip { grid-template-columns: 1fr; } .controls { grid-template-columns: 1fr; } }

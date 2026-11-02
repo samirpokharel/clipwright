@@ -1,0 +1,4 @@
+{% if lines %}
+<textarea readonly rows="{{ lines|length + 1 }}" id="cmds" aria-label="Fetch commands">{{ lines|join('\n') }}</textarea>
+<button type="button" class="ghost" data-copy="cmds">Copy</button>
+{% else %}<p class="muted">Approve some videos first.</p>{% endif %}

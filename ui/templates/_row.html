@@ -1,0 +1,25 @@
+<article class="row" id="row-{{ r.id }}">
+  <form hx-post="/sources/{{ r.id }}" hx-target="#row-{{ r.id }}" hx-swap="outerHTML">
+    <div class="head">
+      <h3>{{ r.title }}</h3>
+      <span class="badge s-{{ r.status }}">{{ r.status }}</span>
+    </div>
+    <p class="meta">{{ r.channel }}{% if r.watchlist %} (watchlist){% endif %} | {{ r.duration|hours }} h | {{ r.views|number }} views{% if r.age_days is not none and r.age_days is defined %} | {{ r.age_days }} days old{% endif %}</p>
+    <p class="meta licence{% if r.reuse_ok %} reuse{% endif %}">Licence: {{ r.license_label or 'Licence not checked' }}</p>
+    <div class="preview" data-preview="{{ r.id }}">
+      <button type="button" class="ghost" data-play>Preview</button>
+      <a href="{{ r.url }}" target="_blank" rel="noopener noreferrer">Open on YouTube</a>
+    </div>
+    <div class="controls">
+      <label>Permission
+        <select name="permission">{% for p in permissions %}<option value="{{ p }}"{% if p == r.permission %} selected{% endif %}>{{ p }}</option>{% endfor %}</select>
+      </label>
+      <label>Note <input type="text" name="note" value="{{ r.note }}" maxlength="300"></label>
+      <div class="actions">
+        <button name="status" value="approved">Approve</button>
+        <button name="status" value="rejected" class="danger">Reject</button>
+        <button name="status" value="" class="ghost">Save note and permission</button>
+      </div>
+    </div>
+  </form>
+</article>

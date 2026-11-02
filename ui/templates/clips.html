@@ -1,0 +1,16 @@
+{% extends "base.html" %}
+{% block main %}
+<h1>Clips</h1>
+{% for j in jobs %}
+<section class="job">
+  <header>
+    <h2>{{ j.job }}</h2>
+    <form hx-post="/clips/{{ j.job }}/package" hx-target="#pkg-{{ j.job }}" hx-swap="innerHTML">
+      <button type="submit">Build upload package</button>
+    </form>
+  </header>
+  <div id="pkg-{{ j.job }}" aria-live="polite"></div>
+  {% for c in j.clips %}{% include "_clip.html" %}{% endfor %}
+</section>
+{% else %}<p>No rendered clips yet. Run clip render first.</p>{% endfor %}
+{% endblock %}

@@ -1,0 +1,3 @@
+{% if busy %}<p class="problem">A search is already running ({{ search.domain }}). Wait for it to finish.</p>
+{% elif search.running %}<p class="muted" hx-get="/sources/search/status" hx-trigger="every 2s" hx-swap="outerHTML">Searching {{ search.domain }}. This takes a minute or so.</p>
+{% elif search.result %}<p class="{{ 'muted' if search.result.code == 0 else 'problem' }}">Last search ({{ search.domain }}): {{ search.result.output.splitlines()[-1] if search.result.output else 'no output' }}</p>{% endif %}
