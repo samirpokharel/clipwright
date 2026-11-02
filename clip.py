@@ -20,7 +20,7 @@ import sys
 from pathlib import Path
 from typing import Any, Dict, List
 
-from clipwright import compose, freesound, pipeline, sounds, style
+from clipwright import compose, freesound, layout, pipeline, render_layout, sounds, style
 from clipwright.sounds import SoundError
 from clipwright.style import StyleError
 
@@ -128,25 +128,67 @@ def _prepare_segments(segments, indexes, video_path, args):
     return prepared
 
 
-async def _pass1(segments, indexes, video_path, args, pass1_dir: Path, cache: Dict[str, Any]) -> None:
+def _keep_range(video_path: Path, segment: Dict[str, Any]) -> tuple:
+    """The single source range SupoClip would render for this segment (same snapping and limits)."""
+    from src.video_utils import (
+        clamp_keep_ranges_to_max_duration,
+        extend_keep_ranges_to_sentence_boundary,
+        snap_keep_ranges_to_sentence_start,
+    )
+
+    ranges = [(layout.parse_time(segment["start_time"]), layout.parse_time(segment["end_time"]))]
+    ranges = snap_keep_ranges_to_sentence_start(video_path, ranges)
+    ranges = extend_keep_ranges_to_sentence_boundary(video_path, ranges)
+    ranges = clamp_keep_ranges_to_max_duration(video_path, ranges)
+    if len(ranges) != 1:
+        raise RuntimeError(f"layout rendering needs one source range, got {len(ranges)}")
+    return ranges[0]
+
+
+async def _pass1(segments, indexes, video_path, args, pass1_dir: Path, cache: Dict[str, Any], styles) -> None:
+    """Pass 1: SupoClip frames "auto" clips; clips with a fill/fit layout are framed by render_layout."""
     from src.services.video_service import VideoService
 
-    prepared = _prepare_segments(segments, indexes, video_path, args)
-    clips = await VideoService.create_video_clips(
-        video_path, prepared, output_format="original" if args.original else "vertical",
-        add_subtitles=False, max_clip_seconds=args.max_seconds,
-    )
-    if len(clips) != len(indexes):
-        sys.exit(f"SupoClip rendered {len(clips)} of {len(indexes)} segments (a segment was skipped); "
-                 "check the timestamps in segments.json")
-    for i, clip in zip(indexes, clips):
-        dest = pass1_dir / f"{i:02d}.mp4"
-        shutil.copy2(clip["path"], dest)
+    def wants_layout(i):
+        lay = styles[i - 1]["layout"]
+        return layout.needs_layout(lay["mode"], lay["ranges"])
+
+    def remember(i, dest, keep_ranges, duration):
         cache[str(i)] = {
             "pass1": str(dest), "source": str(video_path),
-            "keep_ranges": [list(r) for r in clip["keep_ranges"]], "duration": float(clip["duration"]),
+            "keep_ranges": [list(r) for r in keep_ranges], "duration": float(duration),
             "start_time": segments[i - 1]["start_time"], "end_time": segments[i - 1]["end_time"],
+            "layout": pipeline.layout_signature(styles[i - 1]),
         }
+
+    auto = [i for i in indexes if not wants_layout(i)]
+    custom = [i for i in indexes if wants_layout(i)]
+
+    if auto:
+        prepared = _prepare_segments(segments, auto, video_path, args)
+        clips = await VideoService.create_video_clips(
+            video_path, prepared, output_format="original" if args.original else "vertical",
+            add_subtitles=False, max_clip_seconds=args.max_seconds,
+        )
+        if len(clips) != len(auto):
+            sys.exit(f"SupoClip rendered {len(clips)} of {len(auto)} segments (a segment was skipped); "
+                     "check the timestamps in segments.json")
+        for i, clip in zip(auto, clips):
+            dest = pass1_dir / f"{i:02d}.mp4"
+            shutil.copy2(clip["path"], dest)
+            remember(i, dest, clip["keep_ranges"], clip["duration"])
+
+    if custom:
+        prepared = _prepare_segments(segments, custom, video_path, args)
+        for i, seg in zip(custom, prepared):
+            dest = pass1_dir / f"{i:02d}.mp4"
+            keep = _keep_range(video_path, seg)
+            info = render_layout.render_layout_clip(video_path, keep, styles[i - 1]["layout"], dest,
+                                                    pass1_dir / "work")
+            print(f"segment {i}: layout {styles[i - 1]['layout']['mode']}, runs "
+                  + ", ".join(f"{k} {a:.1f}-{b:.1f}s" for a, b, k in info["runs"])
+                  + f", {info['faces']} face detections", file=sys.stderr)
+            remember(i, dest, [keep], info["duration"])
     (pass1_dir / "manifest.json").write_text(json.dumps(cache, indent=2))
 
 
@@ -184,9 +226,9 @@ async def render(args) -> None:
     manifest_path = pass1_dir / "manifest.json"
     cache = json.loads(manifest_path.read_text()) if manifest_path.exists() else {}
     if args.recompose:
-        pipeline.check_entries(cache, indexes, segments)  # fail before any clip renders
+        pipeline.check_entries(cache, indexes, segments, styles)  # fail before any clip renders
     else:
-        await _pass1(segments, indexes, video_path, args, pass1_dir, cache)
+        await _pass1(segments, indexes, video_path, args, pass1_dir, cache, styles)
 
     out_dir = OUT / args.job
     out_dir.mkdir(parents=True, exist_ok=True)
@@ -216,7 +258,7 @@ async def brand_preview(args) -> None:
         sys.exit(f"segment {n} out of range (segments.json has {len(segments)})")
     pass1_dir = job_dir / "pass1"
     cache = json.loads((pass1_dir / "manifest.json").read_text()) if (pass1_dir / "manifest.json").exists() else {}
-    entry = pipeline.entry_for(cache, n, segments[n - 1])
+    entry = pipeline.entry_for(cache, n, segments[n - 1], styles[n - 1])
 
     seconds = min(3.0, entry["duration"])
     work = pass1_dir / "work"
@@ -230,6 +272,36 @@ async def brand_preview(args) -> None:
     out.parent.mkdir(parents=True, exist_ok=True)
     _compose_one(n, segments[n - 1], styles[n - 1], entry, library, out, work, True)
     print(out)
+
+
+def frames_command(args) -> None:
+    """Write a contact sheet so Claude Code can see what is on screen before choosing layouts."""
+    job_dir = _job_dir(args.job)
+    state = json.loads((job_dir / "state.json").read_text())
+    if args.segment:
+        segments = _load_segments(args.segments or str(job_dir / "segments.json"))
+        if not 1 <= args.segment <= len(segments):
+            sys.exit(f"segment {args.segment} out of range (segments.json has {len(segments)})")
+        seg = segments[args.segment - 1]
+        start, end, name = layout.parse_time(seg["start_time"]), layout.parse_time(seg["end_time"]), f"{args.segment:02d}"
+    elif args.start and args.end:
+        try:
+            start, end, name = layout.parse_time(args.start), layout.parse_time(args.end), "range"
+        except ValueError as exc:
+            sys.exit(str(exc))
+    else:
+        sys.exit("give --segment N, or both --from and --to")
+    if end <= start or args.every <= 0:
+        sys.exit("the time range must be positive and --every must be above 0")
+    out = job_dir / f"frames-{name}.png"
+    font = FONTS / "Anton-Regular.ttf"
+    cmd = layout.frames_args(state["video_path"], start, end - start, args.every, str(out),
+                             font=str(font) if font.exists() else None)
+    proc = subprocess.run(cmd, capture_output=True, text=True)
+    if proc.returncode != 0:
+        sys.exit("ffmpeg failed:\n" + "\n".join(proc.stderr.strip().splitlines()[-6:]))
+    print(out)
+    print(f"one frame every {args.every:g}s from {start:g}s to {end:g}s; labels are source times (H:MM:SS)")
 
 
 def sounds_command(args) -> None:
@@ -256,6 +328,8 @@ def main() -> None:
             print(pipeline.profiles_text(_brand(), PROFILES))
         elif args.cmd == "sounds":
             sounds_command(args)
+        elif args.cmd == "frames":
+            frames_command(args)
         else:
             asyncio.run({"fetch": fetch, "render": render, "brand-preview": brand_preview}[args.cmd](args))
     except (StyleError, SoundError, pipeline.PipelineError, freesound.FreesoundError) as exc:

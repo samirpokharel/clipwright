@@ -47,6 +47,14 @@ def build_parser() -> argparse.ArgumentParser:
     b.add_argument("--segments", default=None, help="segments.json (default jobs/<job>/segments.json)")
     b.add_argument("--allow-brand-override", action="store_true")
 
+    fr = sub.add_parser("frames", help="contact sheet of a segment or time range, to choose layouts from what is on screen")
+    fr.add_argument("job")
+    fr.add_argument("--segment", type=int, help="1-based segment number in segments.json")
+    fr.add_argument("--segments", default=None, help="segments.json (default jobs/<job>/segments.json)")
+    fr.add_argument("--from", dest="start", help="start time, MM:SS (instead of --segment)")
+    fr.add_argument("--to", dest="end", help="end time, MM:SS (instead of --segment)")
+    fr.add_argument("--every", type=float, default=3.0, help="seconds between frames (default 3)")
+
     s = sub.add_parser("sounds", help="manage the sound library")
     ssub = s.add_subparsers(dest="sounds_cmd", required=True)
     add = ssub.add_parser("add", help="add a Freesound sound (CC0 or CC-BY) or your own file")

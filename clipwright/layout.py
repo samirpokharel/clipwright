@@ -112,6 +112,31 @@ def plan_runs(mode: str, ranges: Sequence[Tuple[float, float, str]], clip_start:
     return runs
 
 
+MIN_RUN_SECONDS = 0.1
+
+
+def snap_runs(runs: Sequence[Run], cuts: Sequence[float], window: float = 1.0) -> List[Run]:
+    """Move each internal run boundary to the nearest shot change within ``window`` seconds.
+
+    Ranges are chosen from frames a few seconds apart, so a boundary can be a little off the
+    real cut. The clip's own start and end never move, and a snap never leaves a run shorter
+    than MIN_RUN_SECONDS.
+    """
+    if len(runs) < 2 or not cuts:
+        return list(runs)
+    bounds = [[r.start, r.end] for r in runs]
+    for i in range(len(bounds) - 1):
+        boundary = bounds[i][1]
+        near = [c for c in cuts if abs(c - boundary) <= window]
+        if not near:
+            continue
+        best = min(near, key=lambda c: abs(c - boundary))
+        if bounds[i][0] + MIN_RUN_SECONDS <= best <= bounds[i + 1][1] - MIN_RUN_SECONDS:
+            bounds[i][1] = best
+            bounds[i + 1][0] = best
+    return [Run(b[0], b[1], r.kind) for b, r in zip(bounds, runs)]
+
+
 def crop_width(src_h: int) -> int:
     return (int(src_h * 9 / 16) // 2) * 2
 

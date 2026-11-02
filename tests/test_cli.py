@@ -48,6 +48,13 @@ class ParserTest(unittest.TestCase):
         self.assertEqual((own.file, own.license), ("x.mp3", "own"))
         self.assertEqual(p.parse_args(["sounds", "list"]).sounds_cmd, "list")
 
+    def test_frames_command_parses(self):
+        p = pipeline.build_parser()
+        a = p.parse_args(["frames", "job1", "--segment", "2", "--every", "2"])
+        self.assertEqual((a.cmd, a.job, a.segment, a.every), ("frames", "job1", 2, 2.0))
+        b = p.parse_args(["frames", "job1", "--from", "05:08", "--to", "05:34"])
+        self.assertEqual((b.start, b.end, b.every), ("05:08", "05:34", 3.0))
+
 
 class ResolveAllTest(unittest.TestCase):
     def resolve(self, segments, **kw):

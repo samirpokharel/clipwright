@@ -99,6 +99,39 @@ class PlanRunsTest(unittest.TestCase):
             self.assertEqual(a.end, b.start)
 
 
+class SnapTest(unittest.TestCase):
+    runs = [Run(0.0, 5.0, "fill"), Run(5.0, 12.0, "fit"), Run(12.0, 20.0, "fill")]
+
+    def test_boundary_snaps_to_the_nearest_cut_within_the_window(self):
+        out = layout.snap_runs(self.runs, [4.6, 5.9, 12.3], window=1.0)
+        self.assertEqual([(r.start, r.end) for r in out], [(0.0, 4.6), (4.6, 12.3), (12.3, 20.0)])
+        self.assertEqual([r.kind for r in out], ["fill", "fit", "fill"])
+
+    def test_cuts_outside_the_window_are_ignored(self):
+        out = layout.snap_runs(self.runs, [3.0, 15.0], window=1.0)
+        self.assertEqual(out, self.runs)
+
+    def test_clip_start_and_end_never_move(self):
+        out = layout.snap_runs(self.runs, [0.4, 19.7], window=1.0)
+        self.assertEqual(out[0].start, 0.0)
+        self.assertEqual(out[-1].end, 20.0)
+
+    def test_a_snap_never_collapses_a_run(self):
+        runs = [Run(0.0, 5.0, "fill"), Run(5.0, 5.6, "fit"), Run(5.6, 20.0, "fill")]
+        out = layout.snap_runs(runs, [5.55], window=1.0)  # would leave the fit run 0.05 s long
+        self.assertTrue(all(r.end - r.start >= 0.1 for r in out))
+
+    def test_no_cuts_or_a_single_run_changes_nothing(self):
+        self.assertEqual(layout.snap_runs(self.runs, [], window=1.0), self.runs)
+        one = [Run(0.0, 9.0, "fill")]
+        self.assertEqual(layout.snap_runs(one, [4.0], window=1.0), one)
+
+    def test_runs_stay_contiguous_after_snapping(self):
+        out = layout.snap_runs(self.runs, [5.4, 11.8], window=1.0)
+        for a, b in zip(out, out[1:]):
+            self.assertEqual(a.end, b.start)
+
+
 class CropTest(unittest.TestCase):
     def test_crop_width_is_even_and_nine_by_sixteen(self):
         self.assertEqual(layout.crop_width(1080), 606)
