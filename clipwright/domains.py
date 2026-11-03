@@ -12,6 +12,9 @@ from typing import Any, Dict, List
 NAME = re.compile(r"^[a-z0-9][a-z0-9-]*$")
 
 TOP_KEYS = {"name", "description", "clip_seconds", "verification", "overlays", "sources"}
+OPTIONAL_KEYS = {"brand"}
+BRAND_KEYS = ("handle", "accent", "text", "outline", "headline_font")  # the identity fields of brand.json
+HEX = re.compile(r"^#[0-9A-Fa-f]{6}$")
 VERIFICATION_KEYS = ("text", "true", "time_inside", "flags")
 SOURCE_INT_KEYS = ("min_minutes", "min_views", "per_query")
 
@@ -36,7 +39,7 @@ def _problems(name: str, pack: Any) -> List[str]:
     if not isinstance(pack, dict):
         return ["the pack must be a JSON object"]
     out: List[str] = []
-    for key in sorted(set(pack) - TOP_KEYS):
+    for key in sorted(set(pack) - TOP_KEYS - OPTIONAL_KEYS):
         out.append(f"unknown key {key!r}")
     for key in sorted(TOP_KEYS - set(pack)):
         out.append(f"missing key {key!r}")
@@ -64,6 +67,21 @@ def _problems(name: str, pack: Any) -> List[str]:
     if "overlays" in pack and not (isinstance(ov, dict) and set(ov) == {"speaker", "disclaimer"} and isinstance(ov["speaker"], bool)
             and (ov["disclaimer"] is None or isinstance(ov["disclaimer"], str))):
         out.append("overlays must be {\"speaker\": bool, \"disclaimer\": string or null}")
+
+    brand = pack.get("brand")
+    if "brand" not in pack:
+        pass
+    elif not isinstance(brand, dict):
+        out.append(f"brand must be an object with any of {', '.join(BRAND_KEYS)}")
+    else:
+        for key in sorted(set(brand) - set(BRAND_KEYS)):
+            out.append(f"brand.{key}: unknown field; a domain brand may set only {', '.join(BRAND_KEYS)}")
+        for key in ("handle", "headline_font"):
+            if key in brand and (not isinstance(brand[key], str) or not brand[key].strip()):
+                out.append(f"brand.{key} must be a non-empty string")
+        for key in ("accent", "text", "outline"):
+            if key in brand and (not isinstance(brand[key], str) or not HEX.match(brand[key])):
+                out.append(f"brand.{key} = {brand[key]!r} must be a #RRGGBB colour")
 
     src = pack.get("sources")
     want = {"queries", "watchlist", "max_age_days", *SOURCE_INT_KEYS}

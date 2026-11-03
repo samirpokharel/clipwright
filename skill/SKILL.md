@@ -109,8 +109,8 @@ seconds; if it covers a face, use `"title": {"size": "small"}`.
 
 ## Choosing the style
 
-Brand identity (accent colour, headline font, handle) is fixed in `brand.json` and never changes per
-clip. You choose how the clip behaves with a profile plus small overrides.
+Brand identity (accent colour, headline font, handle) is fixed in `brand.json`, with a per-domain
+override in the pack's `brand` block (`domains/<name>.json`), and never changes per clip. You choose how the clip behaves with a profile plus small overrides.
 
 **Pick the profile from the video type**, using title, channel, description, categories and tags in
 `state.json`, then the transcript. Say which profile you chose and why.

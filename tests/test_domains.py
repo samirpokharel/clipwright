@@ -95,3 +95,33 @@ class LoaderTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class PackBrandTest(unittest.TestCase):
+    """Each domain may carry its own identity fields (handle, colours, font) in a ``brand`` block."""
+
+    def _load(self, pack):
+        with tempfile.TemporaryDirectory() as d:
+            Path(d, "x.json").write_text(json.dumps(pack))
+            return domains.load_pack("x", Path(d))
+
+    def test_brand_block_is_optional_and_kept(self):
+        self.assertNotIn("brand", self._load(minimal()))
+        pack = self._load(minimal(brand={"handle": "@shlokaclips", "accent": "#B8651A"}))
+        self.assertEqual(pack["brand"], {"handle": "@shlokaclips", "accent": "#B8651A"})
+
+    def test_brand_block_rejects_unknown_and_bad_fields(self):
+        for brand, want in (
+            ({"progress_bar": {}}, "brand.progress_bar"),
+            ({"handle": ""}, "brand.handle"),
+            ({"accent": "yellow"}, "brand.accent"),
+            ("@x", "brand must be"),
+        ):
+            with self.subTest(brand=brand), self.assertRaises(DomainError) as cm:
+                self._load(minimal(brand=brand))
+            self.assertIn(want, str(cm.exception))
+
+    def test_shipped_packs_name_their_channel(self):
+        for name, handle in (("mythology", "@shlokaclips"), ("tech", "@gradientcuts"), ("health", "@vagusclips")):
+            with self.subTest(name=name):
+                self.assertEqual(domains.load_pack(name, PACKS)["brand"]["handle"], handle)

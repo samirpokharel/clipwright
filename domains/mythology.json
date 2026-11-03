@@ -1,6 +1,9 @@
 {
   "name": "mythology",
   "description": "Hindu mythology in English or Hinglish. Gate: named source text, variants noted, verses checked, respectful framing.",
+  "brand": {
+    "handle": "@shlokaclips"
+  },
   "clip_seconds": {
     "min": 20,
     "max": 75

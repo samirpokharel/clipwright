@@ -23,7 +23,7 @@ import shutil
 import subprocess
 import sys
 from pathlib import Path
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional
 
 from clipwright import (compose, domains, freesound, gate, layout, licence, pipeline, render_layout, sounds,
                         package, sources, style, tracker, transcribe)
@@ -47,8 +47,9 @@ def _job_dir(job: str) -> Path:
     return JOBS / job
 
 
-def _brand() -> Dict[str, Any]:
-    return style.load_brand(BRAND, fonts_dir=FONTS)
+def _brand(pack: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+    """brand.json with the job's domain brand (handle, colours, font) laid over it."""
+    return style.load_brand(BRAND, fonts_dir=FONTS, domain_brand=(pack or {}).get("brand"))
 
 
 def _load_segments(path: str) -> List[Dict[str, Any]]:
@@ -257,7 +258,7 @@ async def render(args) -> None:
     video_path = Path(state["video_path"])
     segments = _load_segments(args.segments)
     pack = domains.load_pack(state["domain"], DOMAINS) if state.get("domain") else None
-    brand = _brand()
+    brand = _brand(pack)
     disabled = tuple(k for k in pipeline.SOUND_KINDS if getattr(args, f"no_{k}"))
     try:
         styles = pipeline.resolve_all(segments, brand, PROFILES,
@@ -320,7 +321,7 @@ async def brand_preview(args) -> None:
     segments = _load_segments(args.segments or str(job_dir / "segments.json"))
     pack = domains.load_pack(state["domain"], DOMAINS) if state.get("domain") else None
     try:
-        styles = pipeline.resolve_all(segments, _brand(), PROFILES, allow_brand_override=args.allow_brand_override)
+        styles = pipeline.resolve_all(segments, _brand(pack), PROFILES, allow_brand_override=args.allow_brand_override)
         library = sounds.load_library(SOUNDS, ensure=True)
     except (StyleError, SoundError) as exc:
         sys.exit(f"Fix this first:\n{exc}")

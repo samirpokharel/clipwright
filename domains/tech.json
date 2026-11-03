@@ -1,6 +1,9 @@
 {
   "name": "tech",
   "description": "Tech, AI and startups: interviews and talks. Light gate: claims checked and the speaker named.",
+  "brand": {
+    "handle": "@gradientcuts"
+  },
   "clip_seconds": {
     "min": 15,
     "max": 60

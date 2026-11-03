@@ -182,3 +182,24 @@ class SchemaTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class DomainBrandTest(unittest.TestCase):
+    """``load_brand`` lays a domain pack's ``brand`` block over brand.json before validating."""
+
+    def test_domain_brand_overrides_identity_only(self):
+        base = style.load_brand(ROOT / "brand.json")
+        got = style.load_brand(ROOT / "brand.json", domain_brand={"handle": "@vagusclips", "accent": "#1E7F58"})
+        self.assertEqual(got["handle"], "@vagusclips")
+        self.assertEqual(got["accent"], "#1E7F58")
+        self.assertEqual(got["base"], base["base"])
+        self.assertEqual(got["headline_font"], base["headline_font"])
+
+    def test_domain_brand_is_validated_like_the_brand_file(self):
+        with self.assertRaises(StyleError) as cm:
+            style.load_brand(ROOT / "brand.json", domain_brand={"accent": "#12"})
+        self.assertIn("domain brand", str(cm.exception))
+
+    def test_none_means_the_brand_file_alone(self):
+        self.assertEqual(style.load_brand(ROOT / "brand.json", domain_brand=None),
+                         style.load_brand(ROOT / "brand.json"))

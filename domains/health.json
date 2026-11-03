@@ -1,6 +1,9 @@
 {
   "name": "health",
   "description": "Healthcare podcasts. Strict gate: the question stays with the answer, the speaker and credential are shown, a disclaimer is burned in.",
+  "brand": {
+    "handle": "@vagusclips"
+  },
   "clip_seconds": {
     "min": 30,
     "max": 90

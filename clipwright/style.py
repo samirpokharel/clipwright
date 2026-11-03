@@ -86,7 +86,9 @@ def _deep_merge(base: Dict[str, Any], extra: Dict[str, Any]) -> Dict[str, Any]:
     return base
 
 
-def load_brand(path: Path, fonts_dir: Optional[Path] = None) -> Dict[str, Any]:
+def load_brand(path: Path, fonts_dir: Optional[Path] = None,
+               domain_brand: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+    """brand.json, with a domain pack's ``brand`` block (identity fields only) laid over it, validated as one."""
     where = f"brand file {Path(path).name}"
     try:
         brand = json.loads(Path(path).read_text())
@@ -94,6 +96,11 @@ def load_brand(path: Path, fonts_dir: Optional[Path] = None) -> Dict[str, Any]:
         raise StyleError(f"{where}: cannot read: {exc}") from exc
     if not isinstance(brand, dict):
         raise StyleError(f"{where}: must be a JSON object")
+    if domain_brand:
+        if not isinstance(domain_brand, dict) or set(domain_brand) - set(IDENTITY):
+            raise StyleError(f"domain brand: may set only {', '.join(IDENTITY)}")
+        brand.update(domain_brand)
+        where = f"{where} with the domain brand"
     for key in brand:
         if key not in BRAND_KEYS:
             raise StyleError(f"{where}: unknown field {key}")
