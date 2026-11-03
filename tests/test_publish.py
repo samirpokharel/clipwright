@@ -232,3 +232,12 @@ class AuthUrlTest(unittest.TestCase):
         verifier, challenge = auth._pkce("hex")
         import hashlib
         self.assertEqual(challenge, hashlib.sha256(verifier.encode()).hexdigest())
+
+
+class RedirectTest(unittest.TestCase):
+    def test_tiktok_defaults_to_loopback_ip_and_override_wins(self):
+        apps = {"tiktok": {"client_key": "k"}, "google": {"client_id": "g"}}
+        self.assertIn("redirect_uri=http%3A%2F%2F127.0.0.1%3A8765%2Fcallback", auth.authorize_url("tiktok", apps, "s", "c"))
+        self.assertIn("redirect_uri=http%3A%2F%2Flocalhost%3A8765%2Fcallback", auth.authorize_url("google", apps, "s", "c"))
+        apps["tiktok"]["redirect_uri"] = "http://localhost:8765/callback"
+        self.assertEqual(auth.redirect_for("tiktok", apps), "http://localhost:8765/callback")

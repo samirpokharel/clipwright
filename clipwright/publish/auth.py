@@ -28,6 +28,13 @@ from .http import Transport, call
 
 PORT = 8765
 REDIRECT = f"http://localhost:{PORT}/callback"
+# TikTok's Desktop form may only accept the loopback IP; the callback server listens on 127.0.0.1 either way
+DEFAULT_REDIRECTS = {"tiktok": f"http://127.0.0.1:{PORT}/callback"}
+
+
+def redirect_for(provider: str, apps: Dict[str, Any]) -> str:
+    """The redirect URI registered in that provider's app: apps.json "redirect_uri", else the default."""
+    return (apps.get(provider) or {}).get("redirect_uri") or DEFAULT_REDIRECTS.get(provider, REDIRECT)
 PROVIDER_OF = {"youtube": "google", "tiktok": "tiktok", "facebook": "meta", "instagram": "meta"}
 GOOGLE_SCOPES = "https://www.googleapis.com/auth/youtube.upload https://www.googleapis.com/auth/youtube.readonly"
 TIKTOK_SCOPES = "user.info.basic,video.publish"
@@ -135,18 +142,18 @@ def _pkce(style: str):
 
 def authorize_url(provider: str, apps: Dict[str, Any], state: str, challenge: Optional[str]) -> str:
     if provider == "google":
-        q = {"client_id": apps["google"]["client_id"], "redirect_uri": REDIRECT, "response_type": "code",
+        q = {"client_id": apps["google"]["client_id"], "redirect_uri": redirect_for("google", apps), "response_type": "code",
              "scope": GOOGLE_SCOPES, "access_type": "offline", "prompt": "consent", "state": state,
              "code_challenge": challenge, "code_challenge_method": "S256"}
         return "https://accounts.google.com/o/oauth2/v2/auth?" + urllib.parse.urlencode(q)
     if provider == "tiktok":
-        q = {"client_key": apps["tiktok"]["client_key"], "redirect_uri": REDIRECT, "response_type": "code",
+        q = {"client_key": apps["tiktok"]["client_key"], "redirect_uri": redirect_for("tiktok", apps), "response_type": "code",
              "scope": TIKTOK_SCOPES, "state": state, "code_challenge": challenge, "code_challenge_method": "S256"}
         return "https://www.tiktok.com/v2/auth/authorize/?" + urllib.parse.urlencode(q)
     if provider == "meta":
         app = apps["meta"]
         version = app.get("graph_version", "v23.0")
-        q = {"client_id": app["app_id"], "redirect_uri": REDIRECT, "response_type": "code", "state": state}
+        q = {"client_id": app["app_id"], "redirect_uri": redirect_for("meta", apps), "response_type": "code", "state": state}
         if app.get("config_id"):
             q["config_id"] = app["config_id"]   # Login for Business: the configuration carries the permissions
         else:
@@ -162,7 +169,7 @@ def exchange(provider: str, apps: Dict[str, Any], code: str, verifier: Optional[
         app = apps["google"]
         r = call(transport, "POST", "https://oauth2.googleapis.com/token", form={
             "code": code, "client_id": app["client_id"], "client_secret": app["client_secret"],
-            "redirect_uri": REDIRECT, "grant_type": "authorization_code", "code_verifier": verifier})
+            "redirect_uri": redirect_for("google", apps), "grant_type": "authorization_code", "code_verifier": verifier})
         if not r.get("refresh_token"):
             raise AuthError("Google returned no refresh token; remove the app's access in your Google account and retry")
         tok = {"access_token": r["access_token"], "refresh_token": r["refresh_token"],
@@ -177,7 +184,7 @@ def exchange(provider: str, apps: Dict[str, Any], code: str, verifier: Optional[
         app = apps["tiktok"]
         r = call(transport, "POST", "https://open.tiktokapis.com/v2/oauth/token/", form={
             "client_key": app["client_key"], "client_secret": app["client_secret"], "code": code,
-            "grant_type": "authorization_code", "redirect_uri": REDIRECT, "code_verifier": verifier})
+            "grant_type": "authorization_code", "redirect_uri": redirect_for("tiktok", apps), "code_verifier": verifier})
         if "access_token" not in r:
             raise AuthError(f"TikTok token exchange failed: {r}")
         return {"access_token": r["access_token"], "refresh_token": r["refresh_token"], "open_id": r.get("open_id"),
@@ -185,7 +192,7 @@ def exchange(provider: str, apps: Dict[str, Any], code: str, verifier: Optional[
     if provider == "meta":
         app, base = apps["meta"], graph(apps)
         short = call(transport, "GET", f"{base}/oauth/access_token", params={
-            "client_id": app["app_id"], "client_secret": app["app_secret"], "redirect_uri": REDIRECT, "code": code})
+            "client_id": app["app_id"], "client_secret": app["app_secret"], "redirect_uri": redirect_for("meta", apps), "code": code})
         long = call(transport, "GET", f"{base}/oauth/access_token", params={
             "grant_type": "fb_exchange_token", "client_id": app["app_id"], "client_secret": app["app_secret"],
             "fb_exchange_token": short["access_token"]})

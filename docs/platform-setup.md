@@ -8,7 +8,7 @@ You create one developer app per platform. All your brands share it, and each br
  "meta":   {"app_id": "...", "app_secret": "...", "graph_version": "v23.0", "config_id": "..."}}
 ```
 
-The redirect URI is the same everywhere: `http://localhost:8765/callback`.
+The redirect URI is `http://localhost:8765/callback` for Google and Meta, and `http://127.0.0.1:8765/callback` for TikTok (each can be overridden with `"redirect_uri"` in `apps.json`).
 
 The developer sites rename menus often. The names below match the platforms' documentation as of November 2026. If a label differs, look for the closest match.
 
@@ -137,7 +137,7 @@ Every upload from an unaudited project is locked to **private**. Locked videos c
    - **Platforms: Desktop.**
 
 ### 3.2 Products and scopes
-1. **Add products → Login Kit.** Under Login Kit → *Desktop*, add the **Redirect URI** `http://localhost:8765/callback`. TikTok only allows `localhost` or `127.0.0.1`, and requires a port.
+1. **Add products → Login Kit.** Under Login Kit → *Desktop*, add the **Redirect URI** `http://127.0.0.1:8765/callback`. The form may reject `localhost`. Clipwright sends `127.0.0.1` for TikTok by default; if you registered `localhost` instead, add `"redirect_uri": "http://localhost:8765/callback"` under `tiktok` in `apps.json`. Configure only the Desktop tab: a half-filled Web tab stops the whole form saving.
 2. **Add products → Content Posting API**, then turn on **Direct Post**.
 3. **Scopes:**
 
