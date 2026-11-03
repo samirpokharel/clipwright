@@ -1,6 +1,7 @@
 # clipwright
 
-Turn a long video into short vertical clips with Claude Code as the clip picker. No API keys, no web app, no database.
+Turn a long video into short vertical clips with Claude Code as the clip picker. Clipping needs no API keys, web app or database.
+The optional [autopilot](#autopilot-ideas-in-scheduled-posts-out) goes further: video ideas in, approved clips posted on a schedule to YouTube, TikTok, Facebook and Instagram, for several brands, from your own laptop.
 
 It wraps the render engine of [SupoClip](https://github.com/FujiwaraChoki/supoclip) (AGPL-3.0) in one Docker container.
 Local Whisper transcribes. Claude Code reads the transcript, chooses the segments and the style, which replaces SupoClip's own LLM call.
@@ -14,12 +15,16 @@ you: "clip this <url>"
   3. pass 1        SupoClip: cut, sentence snapping, 9:16 framing            (container)
   4. pass 2        captions, title block, handle, progress bar, sound        (container)
                    -> out/<id>/*.mp4, manifest.json, credits.txt
+
+autopilot (optional): ideas.md -> ./post produce -> ./post review (you approve) -> ./post publish-due
+                      -> YouTube, TikTok, Facebook Reels, Instagram Reels via their official APIs
 ```
 
 ## Requirements
 - Docker (rootless works), git, about 8 GB free disk
 - Claude Code, if you want the "clip this" skill. The scripts also work by hand.
 - No GPU needed. Whisper runs on CPU.
+- For the autopilot: Python 3.9+ on the host (stdlib only, no pip installs), systemd for the timers, a developer app per platform, and optionally [Demucs](https://github.com/adefossez/demucs) in `tmp/demucs-env/.venv` to strip source music.
 
 ## Setup
 ```bash
@@ -58,7 +63,7 @@ An invalid style stops the run before anything renders and names the segment and
 ## Brand and style
 Style is resolved in three layers, later layers winning: **`brand.json`** (identity and base style), then a **profile** in `profiles/`, then the **`style` block** of a segment.
 
-- **`brand.json`** holds `handle`, `accent`, `text`, `outline`, `headline_font` (the identity) plus the base caption, title, progress bar and sound settings and the mix levels. It ships with placeholders (`@yourchannel`, yellow, Anton). Edit it for your channel. Fonts come from the image's 24 bundled fonts.
+- **`brand.json`** holds `handle`, `accent`, `text`, `outline`, `headline_font` (the identity) plus the base caption, title, progress bar and sound settings and the mix levels. It ships with placeholders (`@yourchannel`, yellow, Anton). Edit it for your channel, or keep one per brand in `brands/<name>/brand.json` and render with `--brand <name>` (clips then go to `out/<name>/<job>/`). Fonts come from the image's 24 bundled fonts.
 - **Locked identity.** Profiles and clip styles cannot change `handle`, `accent`, `text`, `outline`, `headline_font` or `title.text_color`. `--allow-brand-override` lifts that for one run.
 - **Profiles** are partial styles by video type: `explainer` (commentary, diagrams), `performance` (music, no music bed), `interview` (calm captions, few effects), `tutorial` (large text, few effects). Add your own as `profiles/<name>.json` with `description` and `style`.
 - **Per-clip `style`** adjusts within bounds, for example `{"profile": "explainer", "caption": {"words_per_line": 2}, "sound": {"music": "off"}}`. Run `clip schema` for all fields.
@@ -171,7 +176,8 @@ scripts/install-timers.sh             # once: publish every 15 min, produce nigh
 
 ## Tests
 ```bash
-python3 -m unittest discover -s tests -t .   # host: style, timing, sounds, layout, compose arguments, CLI, ducking
+python3 -m unittest discover -s tests -t .   # host: style, timing, sounds, layout, compose arguments, CLI, ducking,
+                                              # brands, queue and slots, post.json, review, produce, platform adapters
 bash tests/container.sh                       # in the image: real pass 1 then pass 2, key-phrase highlights, multi-range timing, fill/fit layouts, faster-whisper
 ```
 The container tests need two cached jobs: `jNQXAC9IVRw` (render tests) and `aMoVyJ9_M24` (layout tests). Fetch each once with `clip fetch https://www.youtube.com/watch?v=<id>`.
@@ -179,7 +185,10 @@ The container tests need two cached jobs: `jNQXAC9IVRw` (render tests) and `aMoV
 ## Limits
 - CPU transcription is still the bottleneck: about 2x real time with faster-whisper, so a one-hour video takes about half an hour (extrapolated). A Google Colab GPU would likely be faster still; that is not measured here, it needs manual upload and download steps, and it would send the audio to Google, so it is not for client or office material.
 - Whisper misspells names, and the captions copy the transcript spelling.
-- No editor and no accounts. To change a clip, edit `segments.json` and run `clip render --recompose`.
+- No editor. To change a clip, edit `segments.json` and run `clip render --recompose`.
+- The autopilot's platform adapters follow each platform's public API documentation and are tested against recorded request shapes, not yet against live accounts. Make the first post on each platform by hand and watch it.
+- YouTube and TikTok keep API uploads private until your app passes their audits (weeks). The YouTube Data API's default quota allows about 6 uploads a day per Google Cloud project.
+- The autopilot runs only while the laptop is on. Missed timers run on wake, and YouTube and Facebook get videos up to 48 hours early so they publish on time regardless.
 - The transcript text and extracted frames go to Claude through your Claude Code session.
 - Only tested on YouTube sources. Local files, Twitch and Kick are untested. Local file names are cleaned to letters, digits, `_` and `-` for the job id.
 - Loudness (-14 LUFS) and the bottom safe zone (15%) are common short-form practice, not checked against each platform's current guidance.
@@ -190,4 +199,6 @@ The container tests need two cached jobs: `jNQXAC9IVRw` (render tests) and `aMoV
 - Clips you make from someone else's video are still their footage. Get permission before posting them.
   Downloading from YouTube may breach its terms. You are responsible for what you clip and publish.
 - Music is your responsibility: the tools record licences and refuse the wrong ones, but do not decide fair use or platform policy.
-- `out/`, `jobs/`, `tmp/`, `cache/` and `sounds/` are git-ignored so downloaded footage and audio never get committed.
+- Every autopilot post must carry a credit line naming the source: `./post validate` and the review page refuse copy without it. A credit is not permission.
+- Posting through the platforms' APIs is subject to their developer terms and content policies. Do not post the same clip to several accounts on one platform.
+- `out/`, `jobs/`, `tmp/`, `cache/` and `sounds/` are git-ignored so downloaded footage and audio never get committed. So are `brands/*` (except `brands/example/`), `secrets/` (OAuth tokens, cookies) and `queue.db`.
