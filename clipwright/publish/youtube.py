@@ -1,9 +1,9 @@
 """YouTube uploads through the Data API v3 resumable protocol.
 
 The video goes up private with ``publishAt`` set to the slot, so YouTube itself publishes it
-on time even if the laptop is off then. Each upload costs 1600 quota units out of the
-project's daily 10,000 by default; the count is kept in queue.db so a run stops before
-YouTube would refuse. Until the API project passes Google's compliance audit, YouTube keeps
+on time even if the laptop is off then. ``videos.insert`` has its own daily bucket (100 calls
+by default, 1 unit each, separate from the 10,000 units for other methods); the count is kept
+in queue.db so a run stops before YouTube would refuse. Until the API project passes Google's compliance audit, YouTube keeps
 API uploads private whatever we ask for.
 """
 
@@ -16,8 +16,9 @@ from .base import Adapter, PublishError, Result
 from .http import HttpError, call
 
 UPLOAD_URL = "https://www.googleapis.com/upload/youtube/v3/videos"
-UPLOAD_COST = 1600
-DEFAULT_DAILY_QUOTA = 10_000
+UPLOAD_COST = 1
+DEFAULT_DAILY_QUOTA = 100         # videos.insert calls per day, per Google Cloud project
+QUOTA_BUCKET = "youtube_insert"
 CHUNK = 8 * 1024 * 1024           # a multiple of 256 KiB, as the resumable protocol requires
 MIN_SCHEDULE_LEAD = timedelta(minutes=10)
 
@@ -39,7 +40,7 @@ class YouTube(Adapter):
 
     def publish(self, post: Dict[str, Any], video: Path, slot_at: datetime, cfg: Dict[str, Any]) -> Result:
         limit = int(cfg.get("daily_quota", DEFAULT_DAILY_QUOTA))
-        if self.db is not None and postqueue.used_quota(self.db, "youtube") + UPLOAD_COST > limit:
+        if self.db is not None and postqueue.used_quota(self.db, QUOTA_BUCKET) + UPLOAD_COST > limit:
             raise PublishError("YouTube daily quota would be exceeded; it resets at midnight Pacific", retry=True)
         token = self.tokens.access("google")
         body = video_body(post, slot_at, cfg)
@@ -55,7 +56,7 @@ class YouTube(Adapter):
             if not session:
                 raise PublishError("YouTube did not return an upload session URL")
             if self.db is not None:
-                postqueue.add_quota(self.db, "youtube", UPLOAD_COST)
+                postqueue.add_quota(self.db, QUOTA_BUCKET, UPLOAD_COST)
             resource = self._send(session, token, data)
         except HttpError as exc:
             if exc.status == 403 and "quotaExceeded" in exc.body:

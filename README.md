@@ -139,14 +139,14 @@ Official APIs only, so each platform needs an app of yours. Put the credentials 
 ```json
 {"google": {"client_id": "...", "client_secret": "..."},
  "tiktok": {"client_key": "...", "client_secret": "..."},
- "meta":   {"app_id": "...", "app_secret": "...", "graph_version": "v23.0"}}
+ "meta":   {"app_id": "...", "app_secret": "...", "graph_version": "v23.0", "config_id": "..."}}
 ```
-Register `http://localhost:8765/callback` as the redirect URI in each app.
+Register `http://localhost:8765/callback` as the redirect URI in each app. **Step-by-step, with the exact use cases and permissions per platform: [docs/platform-setup.md](docs/platform-setup.md).**
 
 | Platform | Create | Before the audit | Audit |
 |---|---|---|---|
-| YouTube | Google Cloud project, enable YouTube Data API v3, OAuth client of type "Desktop", add yourself as a test user | Uploads stay **private** (YouTube locks unverified API projects) | YouTube API Services audit form. Ask for more quota there too: the default is 10,000 units/day, about 6 uploads |
-| TikTok | developers.tiktok.com app with Login Kit (Desktop) and Content Posting API (Direct Post) | Posts are **private** (SELF_ONLY), for up to 5 accounts | App review for Direct Post. TikTok also asks the app to show creator info and get consent before each post: the review page is that step |
+| YouTube | Google Cloud project, enable YouTube Data API v3, OAuth client of type "Desktop", add yourself as a test user | Uploads stay **private** (YouTube locks unverified API projects) | YouTube API Services audit form. The default quota is 100 uploads a day per project (`videos.insert` has its own bucket) |
+| TikTok | developers.tiktok.com app with Login Kit (Desktop) and Content Posting API (Direct Post) | Posts are **private** (SELF_ONLY), for up to 5 accounts, and the TikTok account itself must be set to private | App review for Direct Post. TikTok requires posting controls in the app before it approves (creator name, a privacy choice with no default, comment/duet/stitch toggles, a content disclosure, consent text). The review page does not have them yet |
 | Facebook + Instagram | developers.facebook.com "Business" app with Facebook Login. Link each Instagram Business/Creator account to its Page | Works in development mode for Pages and IG accounts you admin | Only needed to post for people who are not app admins or testers |
 
 Then, per brand: `./post connect <brand> google`, `./post connect <brand> tiktok` and `./post connect <brand> meta`. Each one opens the consent page, and tokens land in `secrets/<brand>/` (chmod 600). For Meta, tick the brand's Page and its Instagram account. `connect` prints the Page and IG ids to copy into `accounts.json`.
@@ -187,7 +187,7 @@ The container tests need two cached jobs: `jNQXAC9IVRw` (render tests) and `aMoV
 - Whisper misspells names, and the captions copy the transcript spelling.
 - No editor. To change a clip, edit `segments.json` and run `clip render --recompose`.
 - The autopilot's platform adapters follow each platform's public API documentation and are tested against recorded request shapes, not yet against live accounts. Make the first post on each platform by hand and watch it.
-- YouTube and TikTok keep API uploads private until your app passes their audits (weeks). The YouTube Data API's default quota allows about 6 uploads a day per Google Cloud project.
+- YouTube and TikTok keep API uploads private until your app passes their audits (weeks). The YouTube Data API allows 100 uploads a day per Google Cloud project by default.
 - The autopilot runs only while the laptop is on. Missed timers run on wake, and YouTube and Facebook get videos up to 48 hours early so they publish on time regardless.
 - The transcript text and extracted frames go to Claude through your Claude Code session.
 - Only tested on YouTube sources. Local files, Twitch and Kick are untested. Local file names are cleaned to letters, digits, `_` and `-` for the job id.

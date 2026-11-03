@@ -73,7 +73,7 @@ class YouTubeTest(unittest.TestCase):
         self.assertIn("publishAt", meta["status"])
         self.assertEqual(meta["snippet"]["categoryId"], "28")
         self.assertEqual(fake.requests[1]["headers"]["Content-Range"], "bytes 0-999/1000")
-        self.assertEqual(pq.used_quota(db, "youtube"), 1600)
+        self.assertEqual(pq.used_quota(db, "youtube_insert"), 1)
 
     def test_past_slot_goes_public_and_308_resumes(self):
         self.assertEqual(video_body(POST, soon(minutes=-5), {})["status"]["privacyStatus"], "public")
@@ -87,7 +87,7 @@ class YouTubeTest(unittest.TestCase):
     def test_quota_guard(self):
         env = Env()
         db = pq.connect(env.work / "q.db")
-        pq.add_quota(db, "youtube", 9000)
+        pq.add_quota(db, "youtube_insert", 100)
         with self.assertRaisesRegex(PublishError, "quota"):
             YouTube(Fake(), env.tokens(Fake()), db).publish(POST, env.video, soon(hours=5), {})
 
@@ -214,3 +214,21 @@ class RunDueTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class AuthUrlTest(unittest.TestCase):
+    def test_meta_uses_config_id_when_given_else_scopes(self):
+        base = {"meta": {"app_id": "A", "app_secret": "S"}}
+        url = auth.authorize_url("meta", base, "st", None)
+        self.assertIn("scope=pages_show_list", url)
+        self.assertNotIn("config_id", url)
+        url = auth.authorize_url("meta", {"meta": dict(base["meta"], extra_scopes=["ads_read"])}, "st", None)
+        self.assertIn("ads_read", url)
+        url = auth.authorize_url("meta", {"meta": dict(base["meta"], config_id="123")}, "st", None)
+        self.assertIn("config_id=123", url)
+        self.assertNotIn("scope=", url)
+
+    def test_tiktok_pkce_is_hex(self):
+        verifier, challenge = auth._pkce("hex")
+        import hashlib
+        self.assertEqual(challenge, hashlib.sha256(verifier.encode()).hexdigest())

@@ -3,7 +3,8 @@
 secrets/apps.json            your developer apps (one per provider, shared by every brand)
     {"google": {"client_id": "...", "client_secret": "..."},
      "tiktok": {"client_key": "...", "client_secret": "..."},
-     "meta":   {"app_id": "...", "app_secret": "...", "graph_version": "v23.0"}}
+     "meta":   {"app_id": "...", "app_secret": "...", "graph_version": "v23.0",
+                "config_id": "..."}}     # Facebook Login for Business configuration (optional)
 secrets/<brand>/<provider>.json   tokens written by `./post connect`, chmod 600
 
 `./post connect <brand> <provider>` opens the consent page and catches the redirect on
@@ -143,9 +144,13 @@ def authorize_url(provider: str, apps: Dict[str, Any], state: str, challenge: Op
              "scope": TIKTOK_SCOPES, "state": state, "code_challenge": challenge, "code_challenge_method": "S256"}
         return "https://www.tiktok.com/v2/auth/authorize/?" + urllib.parse.urlencode(q)
     if provider == "meta":
-        version = apps["meta"].get("graph_version", "v23.0")
-        q = {"client_id": apps["meta"]["app_id"], "redirect_uri": REDIRECT, "response_type": "code",
-             "scope": META_SCOPES, "state": state}
+        app = apps["meta"]
+        version = app.get("graph_version", "v23.0")
+        q = {"client_id": app["app_id"], "redirect_uri": REDIRECT, "response_type": "code", "state": state}
+        if app.get("config_id"):
+            q["config_id"] = app["config_id"]   # Login for Business: the configuration carries the permissions
+        else:
+            q["scope"] = ",".join([META_SCOPES, *app.get("extra_scopes", [])])
         return f"https://www.facebook.com/{version}/dialog/oauth?" + urllib.parse.urlencode(q)
     raise AuthError(f"unknown provider {provider!r} (use google, tiktok or meta)")
 
