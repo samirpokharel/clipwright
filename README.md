@@ -1,5 +1,7 @@
 # clipwright
 
+> Uses **YouTube API Services**. [Privacy Policy](PRIVACY.md) · [Terms of Service](TERMS.md) · [YouTube Terms of Service](https://www.youtube.com/t/terms) · [Google Privacy Policy](https://policies.google.com/privacy)
+
 Turn a long video into short vertical clips with Claude Code as the clip picker. No API keys, no web app, no database.
 
 It wraps the render engine of [SupoClip](https://github.com/FujiwaraChoki/supoclip) (AGPL-3.0) in one Docker container.
