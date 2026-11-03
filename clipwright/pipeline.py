@@ -13,6 +13,8 @@ from .sounds import KINDS, MixPlan, credits
 from .style import StyleError
 
 SOUND_KINDS = ("music", "whoosh", "pop", "sting")
+BRAND_HELP = "use brands/<NAME>/brand.json and write to out/<NAME>/<job>/ (default: root brand.json, out/<job>/)"
+BRAND_NAME_RE = re.compile(r"^[a-z0-9][a-z0-9_-]{0,39}$")
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -25,7 +27,8 @@ def build_parser() -> argparse.ArgumentParser:
                    help="use YouTube's captions in LANG (e.g. ne) instead of Whisper")
 
     sub.add_parser("schema", help="print the style fields and bounds as JSON")
-    sub.add_parser("profiles", help="list profiles with their resolved values")
+    pr = sub.add_parser("profiles", help="list profiles with their resolved values")
+    pr.add_argument("--brand", help=BRAND_HELP)
 
     r = sub.add_parser("render", help="render clips from segments.json")
     r.add_argument("job")
@@ -44,12 +47,14 @@ def build_parser() -> argparse.ArgumentParser:
     r.add_argument("--letterbox", action="store_true",
                    help="upstream layout: blurred background for content/webcam shots")
     r.add_argument("--exact", action="store_true", help="use my start and end timestamps verbatim (no sentence snapping)")
+    r.add_argument("--brand", help=BRAND_HELP)
 
     b = sub.add_parser("brand-preview", help="render a 3 second sample from cached pass 1")
     b.add_argument("job")
     b.add_argument("--segment", type=int, default=1)
     b.add_argument("--segments", default=None, help="segments.json (default jobs/<job>/segments.json)")
     b.add_argument("--allow-brand-override", action="store_true")
+    b.add_argument("--brand", help=BRAND_HELP)
 
     fr = sub.add_parser("frames", help="contact sheet of a segment or time range, to choose layouts from what is on screen")
     fr.add_argument("job")
@@ -119,6 +124,18 @@ def safe_job_id(stem: str) -> str:
     colons would break the filter graph that pass 2 builds from the job folder path.
     """
     return re.sub(r"[^A-Za-z0-9_-]+", "_", stem).strip("_") or "job"
+
+
+def brand_paths(work: Path, brand: Optional[str]) -> Tuple[Path, Path]:
+    """``(brand.json, out root)`` for a brand name, or the root brand.json and ``out/`` with no name."""
+    if not brand:
+        return work / "brand.json", work / "out"
+    if not BRAND_NAME_RE.match(brand):
+        raise PipelineError(f"brand name {brand!r}: use lowercase letters, digits, _ and -")
+    path = work / "brands" / brand / "brand.json"
+    if not path.is_file():
+        raise PipelineError(f"brand {brand!r} not found: expected {path}")
+    return path, work / "out" / brand
 
 
 def clip_filename(index: int, segment: Dict[str, Any]) -> str:

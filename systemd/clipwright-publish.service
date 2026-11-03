@@ -1,0 +1,8 @@
+[Unit]
+Description=Clipwright: upload posts that are due
+
+[Service]
+Type=oneshot
+WorkingDirectory=__DIR__
+Environment=PATH=%h/.local/bin:/usr/local/bin:/usr/bin:/bin
+ExecStart=__DIR__/post publish-due

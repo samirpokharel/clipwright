@@ -1,0 +1,9 @@
+[Unit]
+Description=Clipwright: turn the next idea per brand into clips for review
+
+[Service]
+Type=oneshot
+WorkingDirectory=__DIR__
+Environment=PATH=%h/.local/bin:/usr/local/bin:/usr/bin:/bin
+ExecStart=__DIR__/post produce
+TimeoutStartSec=6h

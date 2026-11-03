@@ -19,7 +19,7 @@ import shutil
 import subprocess
 import sys
 from pathlib import Path
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional
 
 from clipwright import compose, freesound, layout, pipeline, render_layout, sounds, style, transcribe
 from clipwright.sounds import SoundError
@@ -27,10 +27,8 @@ from clipwright.style import StyleError
 
 WORK = Path("/work")
 JOBS = WORK / "jobs"
-OUT = WORK / "out"
 SOUNDS = WORK / "sounds"
 PROFILES = WORK / "profiles"
-BRAND = WORK / "brand.json"
 FONTS = Path("/app/fonts")
 
 
@@ -38,8 +36,13 @@ def _job_dir(job: str) -> Path:
     return JOBS / job
 
 
-def _brand() -> Dict[str, Any]:
-    return style.load_brand(BRAND, fonts_dir=FONTS)
+def _brand(name: Optional[str] = None) -> Dict[str, Any]:
+    path, _ = pipeline.brand_paths(WORK, name)
+    return style.load_brand(path, fonts_dir=FONTS)
+
+
+def _out_root(name: Optional[str] = None) -> Path:
+    return pipeline.brand_paths(WORK, name)[1]
 
 
 def _load_segments(path: str) -> List[Dict[str, Any]]:
@@ -392,7 +395,7 @@ async def render(args) -> None:
     state = json.loads((job_dir / "state.json").read_text())
     video_path = Path(state["video_path"])
     segments = _load_segments(args.segments)
-    brand = _brand()
+    brand = _brand(args.brand)
     disabled = tuple(k for k in pipeline.SOUND_KINDS if getattr(args, f"no_{k}"))
     try:
         styles = pipeline.resolve_all(segments, brand, PROFILES,
@@ -422,7 +425,7 @@ async def render(args) -> None:
     else:
         await _pass1(segments, indexes, video_path, args, pass1_dir, cache, styles)
 
-    out_dir = OUT / args.job
+    out_dir = _out_root(args.brand) / args.job
     out_dir.mkdir(parents=True, exist_ok=True)
     out_manifest = out_dir / "manifest.json"
     previous = json.loads(out_manifest.read_text()) if out_manifest.exists() else []
@@ -441,7 +444,7 @@ async def brand_preview(args) -> None:
     state = json.loads((job_dir / "state.json").read_text())
     segments = _load_segments(args.segments or str(job_dir / "segments.json"))
     try:
-        styles = pipeline.resolve_all(segments, _brand(), PROFILES, allow_brand_override=args.allow_brand_override)
+        styles = pipeline.resolve_all(segments, _brand(args.brand), PROFILES, allow_brand_override=args.allow_brand_override)
         library = sounds.load_library(SOUNDS, ensure=True)
     except (StyleError, SoundError) as exc:
         sys.exit(f"Fix this first:\n{exc}")
@@ -460,7 +463,7 @@ async def brand_preview(args) -> None:
                     "-c:v", "libx264", "-preset", "veryfast", "-crf", "20", "-c:a", "aac", str(short)], check=True)
     entry = dict(entry, pass1=str(short), duration=seconds,
                  keep_ranges=pipeline.truncate_ranges(entry["keep_ranges"], seconds))
-    out = OUT / args.job / f"preview_{n:02d}.mp4"
+    out = _out_root(args.brand) / args.job / f"preview_{n:02d}.mp4"
     out.parent.mkdir(parents=True, exist_ok=True)
     _compose_one(n, segments[n - 1], styles[n - 1], entry, library, out, work, True)
     print(out)
@@ -517,7 +520,7 @@ def main() -> None:
         if args.cmd == "schema":
             print(pipeline.schema_text())
         elif args.cmd == "profiles":
-            print(pipeline.profiles_text(_brand(), PROFILES))
+            print(pipeline.profiles_text(_brand(args.brand), PROFILES))
         elif args.cmd == "sounds":
             sounds_command(args)
         elif args.cmd == "frames":

@@ -333,3 +333,28 @@ class CacheEntryTest(unittest.TestCase):
         self.assertIn("segment 2", message)
         self.assertIn("segment 3", message)
         self.assertNotIn("segment 1:", message)
+
+
+class BrandPathsTest(unittest.TestCase):
+    def test_no_brand_uses_root_files(self):
+        self.assertEqual(pipeline.brand_paths(Path("/w"), None), (Path("/w/brand.json"), Path("/w/out")))
+
+    def test_named_brand_uses_its_folder(self):
+        import tempfile
+        with tempfile.TemporaryDirectory() as tmp:
+            work = Path(tmp)
+            (work / "brands" / "mind").mkdir(parents=True)
+            (work / "brands" / "mind" / "brand.json").write_text("{}")
+            self.assertEqual(pipeline.brand_paths(work, "mind"),
+                             (work / "brands/mind/brand.json", work / "out/mind"))
+
+    def test_missing_or_unsafe_brand_is_refused(self):
+        with self.assertRaisesRegex(pipeline.PipelineError, "not found"):
+            pipeline.brand_paths(Path("/nonexistent"), "mind")
+        with self.assertRaisesRegex(pipeline.PipelineError, "lowercase"):
+            pipeline.brand_paths(Path("/w"), "../etc")
+
+    def test_brand_flag_parses(self):
+        args = pipeline.build_parser().parse_args(["render", "j", "s.json", "--brand", "mind"])
+        self.assertEqual(args.brand, "mind")
+        self.assertIsNone(pipeline.build_parser().parse_args(["profiles"]).brand)

@@ -1,0 +1,12 @@
+{
+  "timezone": "Asia/Kathmandu",
+  "slots": ["09:00", "13:00", "19:30"],
+  "stagger_minutes": 20,
+  "hashtags": ["#shorts"],
+  "platforms": {
+    "youtube": {"category_id": "27"},
+    "tiktok": {},
+    "facebook": {"page_id": "YOUR_PAGE_ID"},
+    "instagram": {"ig_user_id": "YOUR_IG_USER_ID"}
+  }
+}

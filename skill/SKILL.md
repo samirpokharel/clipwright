@@ -49,6 +49,66 @@ full-bleed crop tracking the speaker), `--no-subtitles`, `--no-music --no-whoosh
 `--allow-brand-override` (lets a profile or clip style change locked identity fields; never use it
 unless the user asks). Output: `__CLIP_DIR__/out/<job>/NN_*.mp4`, `manifest.json`, `credits.txt`.
 
+## Produce from an idea (autopilot, `./post produce`)
+
+When given a brand and an idea (unattended, from `./post produce`, or when the user asks), go from idea
+to reviewable clips. Run every command from `__CLIP_DIR__`. Never upload or post: a human approves each
+clip on the review page first.
+
+1. **Find sources:** `./post discover "<idea as a search>" "<the science/expert angle>" "<a synonym>"`
+   returns ranked JSON (views, duration, channel). Prefer an on-camera expert (a scientist, doctor or
+   professor; a TED/TEDx talk; a major podcast or publisher channel) whose talk actually makes the
+   idea's point. Skip motivational reupload channels, faceless AI narration, and anything under about
+   10k views unless nothing else fits. Before fetching, confirm the point is in the video:
+   `yt-dlp --skip-download --write-auto-subs --sub-langs en --sub-format vtt -o "jobs/_subs/%(id)s" <url>`
+   and Grep the .vtt for the idea's key words. If no source makes the point, stop and report failed.
+2. **Fetch** the best one: `./clip fetch <url>`.
+3. **Cut exactly:** find the moment in `jobs/<id>/transcript.txt`, then get word timings with
+   `./post words <id> --from <s> --to <s>`. Start on the first word of a self-contained sentence
+   that hooks on its own. End just after the last word of the payoff. Use plain seconds ("920.45") with
+   `--exact`. Aim for 30-75 s. A clip over 60 s needs `--max-seconds 80`.
+4. **Music:** if the transcript shows `[Music]`, or the source is a produced explainer or documentary,
+   run `./post strip-music <id>` before rendering. It keeps the voice and drops music that would
+   trigger Content ID. Always render with `--no-music`, so the user adds platform-library music.
+5. **Layout:** `./clip frames <id> --from <MM:SS> --to <MM:SS> --every 6` and Read the PNG. Put
+   `"style": {"profile": "explainer", "layout": {"mode": "fill"}}` for a presenter, and
+   `layout_ranges` with `fit` for charts, text cards or slides (see "Choosing the layout").
+   The layout mode lives under `style.layout.mode`, not at the top of the segment.
+6. **Render:** write `jobs/<id>.segments.json`, then
+   `./clip render <id> /work/jobs/<id>.segments.json --exact --no-music --max-seconds 80 --brand <brand>`.
+   Output lands in `out/<brand>/<id>/`. Check the printed duration matches your range. View frames
+   at about 1 s, mid-clip, and inside every fit range (`ffmpeg -loglevel error -y -ss <t> -i <clip>
+   -frames:v 1 -vf scale=360:-1 jobs/_produce/<name>.png`, then Read it). If a frame shows a cropped
+   text card, add a fit range and render again.
+7. **Write the copy** to `out/<brand>/<id>/<clip name>.post.json` (same name as the .mp4, with
+   `.post.json`), then run `./post validate <path>`:
+   ```json
+   {"brand": "<brand>", "file": "out/<brand>/<id>/<clip>.mp4", "duration": 53.5,
+    "source_url": "https://www.youtube.com/watch?v=<id>",
+    "credit": "Credit: <channel name>",
+    "platforms": {
+      "youtube":   {"title": "...", "description": "...", "tags": ["...", "..."]},
+      "tiktok":    {"caption": "..."},
+      "facebook":  {"caption": "..."},
+      "instagram": {"caption": "..."}}}
+   ```
+   Include only the platforms in `brands/<brand>/accounts.json`. The `credit` string must appear word
+   for word in every platform's text (the validator refuses it otherwise). Name the speaker too
+   ("🎤 Dr Lila Landowski, neuroscientist").
+   - **Hooky but true:** curiosity gaps ("That panic after a mistake? It's your brain getting
+     smarter"), a surprising result, a named authority ("Harvard professor"). Every claim must be
+     something the clip says. A title the video doesn't deliver makes people swipe away and comment
+     "fake", which kills reach.
+   - **YouTube:** title max 100 chars with search words early, and 1-2 emojis at most. The description
+     opens with a 2-line hook, then a comment question, the speaker and credit lines, and 3-5 hashtags
+     ending in `#shorts`. 8-14 tags.
+   - **TikTok:** the caption is the title. Put the hook in the first 70 characters (shown before
+     "more"), then one line of payoff and the credit, then 4-5 hashtags mixing broad and niche.
+   - **Facebook / Instagram:** conversational. Open with a direct "be honest…" or "this study…" line,
+     add one line of payoff and a question to drive comments, then the credit and 2-3 hashtags
+     (Instagram can take up to 5).
+   - Add the brand's `hashtags` from accounts.json.
+
 ## Selection rules (from SupoClip's own prompt)
 
 - Pick 3-7 segments for a typical video; roughly 1 per 5 min of source, max 10.

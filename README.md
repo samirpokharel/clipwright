@@ -44,13 +44,14 @@ Local files must live inside this folder (it is mounted as `/work`).
 | Command | What it does |
 |---|---|
 | `clip fetch <url\|file>` | Download, transcribe, save `transcript.txt` and `state.json` (with title, channel, description, tags when available). |
-| `clip render <job> <segments.json>` | Pass 1 then pass 2. Flags: `--only N [N ...]`, `--recompose`, `--exact`, `--clip-length`, `--max-seconds`, `--original`, `--no-subtitles`, `--no-music/--no-whoosh/--no-pop/--no-sting`, `--allow-brand-override`. |
+| `clip render <job> <segments.json>` | Pass 1 then pass 2. Flags: `--only N [N ...]`, `--recompose`, `--exact`, `--clip-length`, `--max-seconds`, `--original`, `--no-subtitles`, `--no-music/--no-whoosh/--no-pop/--no-sting`, `--allow-brand-override`, `--brand NAME`. |
 | `clip render ... --recompose` | Reuse the cached pass 1 and redo only pass 2. Use it to try style and sound changes. |
 | `clip brand-preview <job> [--segment N]` | Render a 3 second sample into `out/<job>/preview_NN.mp4`. |
 | `clip frames <job> --segment N [--every 4]` | Contact sheet of a segment (or `--from/--to`), one labelled frame every few seconds. Used to choose layouts from what is on screen. |
 | `clip schema` | Print every style field and its bounds as JSON. |
 | `clip profiles` | List the profiles with their resolved values. |
 | `clip sounds add\|list` | Manage the sound library. |
+| `post ...` | The autopilot (host side): `produce`, `review`, `publish-due`, `queue`, `connect`, `discover`, `words`, `strip-music`, `validate`. See [Autopilot](#autopilot-ideas-in-scheduled-posts-out). |
 
 An invalid style stops the run before anything renders and names the segment and field.
 
@@ -107,6 +108,59 @@ Stage 2 layout render (pass 1 through pass 2 together, so the whole clip):
 | One 18 s clip, whole-clip fill | 18 s | 50 s |
 
 Cost: no API fees. It uses your Claude Code usage for the selection step only.
+
+## Autopilot: ideas in, scheduled posts out
+You write ideas and approve clips. Everything else runs on this laptop:
+
+```
+brands/<brand>/ideas.md ──(01:30 nightly)──▶ ./post produce   headless Claude Code: discover a source,
+                                                               fetch, cut, strip music, render, write copy
+                                   ▼
+                       ./post review      local page: watch, edit copy per platform, approve or reject
+                                   ▼  approve books the brand's next free slots in queue.db
+                       ./post publish-due (every 15 min) ─▶ YouTube · TikTok · Facebook Reels · Instagram Reels
+```
+
+### Brands
+Each brand is a folder, `brands/<name>/` (git-ignored; `brands/example/` is the template):
+- `brand.json`: the look (handle, colours, font), as described above. Render with `--brand <name>`, and clips go to `out/<name>/<job>/`.
+- `accounts.json`: the timezone, the daily `slots` (such as `["09:00","13:00","19:30"]`), `stagger_minutes` between platforms, extra `hashtags`, and the `platforms` this brand posts to. Facebook needs `page_id` and Instagram needs `ig_user_id`. Set `"audited": true` on `youtube` or `tiktok` once that platform approves your app.
+- `ideas.md`: one `- [ ] idea` per line. `produce` takes the first one, then marks it `- [x]` (done, with job ids) or `- [!]` (failed, with the reason).
+
+One clip goes to one brand. Never post the same clip to several accounts on one platform, because platforms treat that as spam.
+
+### Developer apps (one-time, about an hour, then the audits take weeks)
+Official APIs only, so each platform needs an app of yours. Put the credentials in `secrets/apps.json` (git-ignored):
+```json
+{"google": {"client_id": "...", "client_secret": "..."},
+ "tiktok": {"client_key": "...", "client_secret": "..."},
+ "meta":   {"app_id": "...", "app_secret": "...", "graph_version": "v23.0"}}
+```
+Register `http://localhost:8765/callback` as the redirect URI in each app.
+
+| Platform | Create | Before the audit | Audit |
+|---|---|---|---|
+| YouTube | Google Cloud project, enable YouTube Data API v3, OAuth client of type "Desktop", add yourself as a test user | Uploads stay **private** (YouTube locks unverified API projects) | YouTube API Services audit form. Ask for more quota there too: the default is 10,000 units/day, about 6 uploads |
+| TikTok | developers.tiktok.com app with Login Kit (Desktop) and Content Posting API (Direct Post) | Posts are **private** (SELF_ONLY), for up to 5 accounts | App review for Direct Post. TikTok also asks the app to show creator info and get consent before each post: the review page is that step |
+| Facebook + Instagram | developers.facebook.com "Business" app with Facebook Login. Link each Instagram Business/Creator account to its Page | Works in development mode for Pages and IG accounts you admin | Only needed to post for people who are not app admins or testers |
+
+Then, per brand: `./post connect <brand> google`, `./post connect <brand> tiktok` and `./post connect <brand> meta`. Each one opens the consent page, and tokens land in `secrets/<brand>/` (chmod 600). For Meta, tick the brand's Page and its Instagram account. `connect` prints the Page and IG ids to copy into `accounts.json`.
+
+The endpoints and fields follow each platform's public documentation. They are covered by tests against recorded request shapes, not yet by live accounts, so do your first real post per platform by hand: approve one clip, then run `./post publish-due` and watch it.
+
+### Daily use
+```bash
+echo "- [ ] Why cold showers wake your brain up" >> brands/ojastra_mind/ideas.md
+./post produce --brand ojastra_mind   # or wait for the 01:30 run; a desktop notification says when clips are ready
+./post review                         # approve or reject; approve books the slots
+./post publish-due --dry-run          # what would upload now
+./post queue                          # every queued post, status, link, last error
+scripts/install-timers.sh             # once: publish every 15 min, produce nightly (systemd --user)
+```
+- **YouTube and Facebook** are uploaded up to 48 hours early with the platform's own schedule (`publishAt`, `scheduled_publish_time`), so they go live on time even if the laptop is asleep then.
+- **TikTok and Instagram** have no API scheduling. They upload at the slot, or as soon as the laptop wakes if it was asleep (timers are `Persistent`).
+- **Safety:** a clip is queued only by approving it. `(clip, platform)` is unique, so nothing posts twice. Errors that can't resolve themselves (a 4xx, a policy rejection) fail at once. 5xx and 429 errors retry after 15 then 60 minutes. A post interrupted mid-upload is never retried automatically, because it may already be live: check the platform, then `./post retry <id>` or `./post cancel <id>`. Failures send a desktop notification.
+- **Music:** `./post strip-music <video_id>` separates the voice with Demucs (install it into `tmp/demucs-env/.venv`, or set `DEMUCS`) and swaps it into the cached source. Render with `--no-music`, then add music from each platform's own library if you want it.
 
 ## Tests
 ```bash

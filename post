@@ -1,0 +1,6 @@
+#!/usr/bin/env bash
+# Host-side autopilot commands: produce, review, publish-due, connect... See README.md, Autopilot.
+set -euo pipefail
+HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+cd "$HERE"
+exec python3 -I -c 'import sys; sys.path.insert(0, sys.argv.pop(1)); from clipwright.post import main; main()' "$HERE" "$@"

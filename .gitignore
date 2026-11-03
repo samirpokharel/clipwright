@@ -12,3 +12,9 @@ sounds/*
 
 __pycache__/
 *.pyc
+
+# brands, accounts, ideas and tokens are personal; only the example brand is committed
+brands/*
+!brands/example/
+secrets/
+queue.db
