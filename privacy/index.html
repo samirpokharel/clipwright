@@ -95,11 +95,33 @@ bound by the <a href="https://www.youtube.com/t/terms">YouTube Terms of
 Service</a>. Google's handling of data is described in the <a
 href="https://policies.google.com/privacy">Google Privacy
 Policy</a>.</p>
-<h2 id="other-platforms">Other platforms</h2>
-<p>Clipwright can also publish to TikTok, Facebook and Instagram
-accounts that belong to the operator, through those platforms' official
-APIs. The same rules apply: tokens are stored locally, only the
-operator's own accounts are used, and no data is shared or sold.</p>
+<h2 id="tiktok">TikTok</h2>
+<p>When the operator connects a TikTok account, Clipwright uses TikTok
+Login Kit and the Content Posting API with these scopes:</p>
+<ul>
+<li><code>user.info.basic</code>: to identify the connected account
+(open ID and display name), so the operator can see which account is
+connected.</li>
+<li><code>video.publish</code>: to post videos the operator has approved
+to the operator's own TikTok profile.</li>
+</ul>
+<p>Before each post, Clipwright reads the account's allowed privacy
+levels and maximum video length (<code>creator_info</code>), then
+uploads the video with the caption and settings the operator chose. It
+stores the TikTok access and refresh tokens locally (owner-only file),
+and the publish ID and status of its own posts. It does not read other
+users' data, the account's followers, messages or analytics. Disconnect
+at any time in the TikTok app (Settings and privacy → Security → Manage
+app permissions), or by deleting the local token file
+(<code>secrets/&lt;brand&gt;/tiktok.json</code>).</p>
+<h2 id="facebook-and-instagram">Facebook and Instagram</h2>
+<p>Clipwright can also publish Reels to Facebook Pages and Instagram
+professional accounts that belong to the operator, through Meta's
+official Graph API. The same rules apply: Page tokens are stored
+locally, only the operator's own Pages and accounts are used, and no
+data is shared or sold. Remove access at any time in Facebook Settings →
+Business integrations, or by deleting
+<code>secrets/&lt;brand&gt;/meta.json</code>.</p>
 <h2 id="contact">Contact</h2>
 <p>Questions about this policy: <a
 href="mailto:thevoidsmr@gmail.com">thevoidsmr@gmail.com</a></p>
