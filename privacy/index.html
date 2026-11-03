@@ -1,0 +1,108 @@
+<!DOCTYPE html>
+<html xmlns="http://www.w3.org/1999/xhtml" lang="" xml:lang="">
+<head>
+  <meta charset="utf-8" />
+  <meta name="generator" content="pandoc" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes" />
+  <title>Clipwright Privacy Policy</title>
+  <style>
+    code{white-space: pre-wrap;}
+    span.smallcaps{font-variant: small-caps;}
+    div.columns{display: flex; gap: min(4vw, 1.5em);}
+    div.column{flex: auto; overflow-x: auto;}
+    div.hanging-indent{margin-left: 1.5em; text-indent: -1.5em;}
+    /* The extra [class] is a hack that increases specificity enough to
+       override a similar rule in reveal.js */
+    ul.task-list[class]{list-style: none;}
+    ul.task-list li input[type="checkbox"] {
+      font-size: inherit;
+      width: 0.8em;
+      margin: 0 0.8em 0.2em -1.6em;
+      vertical-align: middle;
+    }
+    .display.math{display: block; text-align: center; margin: 0.5rem auto;}
+  </style>
+  <link rel="stylesheet" href="/clipwright/style.css" />
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+</head>
+<body>
+<main><nav><a href="/clipwright/">Clipwright</a> · <a href="/clipwright/privacy/">Privacy Policy</a> · <a href="/clipwright/terms/">Terms of Service</a></nav>
+<h1 id="clipwright-privacy-policy">Clipwright Privacy Policy</h1>
+<p><em>Last updated: 4 November 2026</em></p>
+<p>Clipwright is a personal publishing tool. Its operator (the
+"operator") runs it on their own computer to upload short videos to the
+operator's own YouTube channels and other social media accounts. It is
+not offered to the public, and nobody else uses it.</p>
+<h2 id="what-data-clipwright-accesses">What data Clipwright
+accesses</h2>
+<p>Clipwright uses the YouTube API Services. When the operator connects
+a YouTube channel, Clipwright requests these Google OAuth scopes:</p>
+<ul>
+<li><code>https://www.googleapis.com/auth/youtube.upload</code>: to
+upload videos the operator has approved to the operator's own
+channel.</li>
+<li><code>https://www.googleapis.com/auth/youtube.readonly</code>: only
+to read the connected channel's ID and name, so the operator can see
+which channel is connected.</li>
+</ul>
+<p>Clipwright calls <code>videos.insert</code> and
+<code>channels.list</code> (for the authenticated user's own channel).
+It does <strong>not</strong> access, collect or analyse any other
+YouTube user's data, comments, subscribers or analytics.</p>
+<h2 id="what-data-clipwright-stores">What data Clipwright stores</h2>
+<p>Everything is stored locally, on the operator's own computer:</p>
+<ul>
+<li><strong>OAuth tokens</strong> (access and refresh tokens) for the
+operator's own accounts, in a file only the operator's user account can
+read. They are never sent anywhere except to Google's OAuth servers, to
+refresh access.</li>
+<li><strong>Upload records</strong>: the ID, URL and status of each
+video Clipwright uploaded, so that it never uploads the same video
+twice.</li>
+<li><strong>The channel ID and name</strong> of each connected
+channel.</li>
+</ul>
+<p>Clipwright has no servers. It does not send, sell, share or transfer
+any YouTube API data to anyone, and it uses none of it for
+advertising.</p>
+<h2 id="how-long-data-is-kept">How long data is kept</h2>
+<p>Tokens are kept until the operator disconnects the account or revokes
+access. Upload records are kept as a local history, and the operator can
+delete them at any time by deleting the local database file.</p>
+<h2 id="deleting-your-data">Deleting your data</h2>
+<ul>
+<li><strong>Revoke access:</strong> remove Clipwright at <a
+href="https://myaccount.google.com/connections">Google Account →
+Security → Third-party apps with account access</a>. Its tokens stop
+working immediately.</li>
+<li><strong>Delete local data:</strong> delete the token file
+(<code>secrets/&lt;brand&gt;/google.json</code>) and the upload records
+(<code>queue.db</code>). Clipwright keeps no other copy, and there is no
+server-side copy to delete.</li>
+<li><strong>Stored API data</strong> (the channel ID and name, and the
+IDs of its own uploads) belongs only to the operator's own connected
+channels, and is deleted with the files above.</li>
+</ul>
+<h2 id="how-to-revoke-access">How to revoke access</h2>
+<p>Access can be revoked at any time at <a
+href="https://myaccount.google.com/connections">Google Account →
+Security → Third-party apps with account access</a>, or by deleting the
+local token file. After revoking, Clipwright can no longer access the
+account.</p>
+<h2 id="googles-privacy-policy">Google's privacy policy</h2>
+<p>Clipwright uses YouTube API Services. By using it, the operator is
+bound by the <a href="https://www.youtube.com/t/terms">YouTube Terms of
+Service</a>. Google's handling of data is described in the <a
+href="https://policies.google.com/privacy">Google Privacy
+Policy</a>.</p>
+<h2 id="other-platforms">Other platforms</h2>
+<p>Clipwright can also publish to TikTok, Facebook and Instagram
+accounts that belong to the operator, through those platforms' official
+APIs. The same rules apply: tokens are stored locally, only the
+operator's own accounts are used, and no data is shared or sold.</p>
+<h2 id="contact">Contact</h2>
+<p>Questions about this policy: <a
+href="mailto:thevoidsmr@gmail.com">thevoidsmr@gmail.com</a></p>
+</main>
+</body>
+</html>
