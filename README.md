@@ -1,5 +1,7 @@
 # clipwright
 
+> Uses **YouTube API Services**. [Privacy Policy](PRIVACY.md) · [Terms of Service](TERMS.md) · [YouTube Terms of Service](https://www.youtube.com/t/terms) · [Google Privacy Policy](https://policies.google.com/privacy)
+
 Turn a long video into short vertical clips with Claude Code as the clip picker. Clipping needs no API keys, web app or database.
 The optional [autopilot](#autopilot-ideas-in-scheduled-posts-out) goes further: video ideas in, approved clips posted on a schedule to YouTube, TikTok, Facebook and Instagram, for several brands, from your own laptop.
 
