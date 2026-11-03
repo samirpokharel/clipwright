@@ -9,17 +9,18 @@ import json
 import math
 import re
 import subprocess
-from typing import Any, Dict, List, Sequence
+from typing import Any, Dict, List, Optional, Sequence
 
 MIN_SECONDS = 120          # shorter than this rarely holds a full 30-70 s idea plus context
 MAX_SECONDS = 3 * 3600
 REUPLOAD_RE = re.compile(r"motivation|compilation|mindset|hub\b|best speech|wisdom|clips?\s*hd", re.I)
 
 
-def search(query: str, n: int = 10, runner=subprocess.run) -> List[Dict[str, Any]]:
+def search(query: str, n: int = 10, runner=subprocess.run, cookies: Optional[str] = None) -> List[Dict[str, Any]]:
     """Up to ``n`` YouTube results for ``query`` (flat search: no download, one request)."""
     fmt = "%(.{id,title,channel,view_count,duration,upload_date})j"
-    proc = runner(["yt-dlp", "--flat-playlist", "--no-warnings", "--print", fmt, f"ytsearch{n}:{query}"],
+    extra = ["--cookies", cookies] if cookies else []
+    proc = runner(["yt-dlp", "--flat-playlist", "--no-warnings", *extra, "--print", fmt, f"ytsearch{n}:{query}"],
                   capture_output=True, text=True, timeout=120)
     if proc.returncode != 0:
         raise RuntimeError(f"yt-dlp search failed: {proc.stderr.strip()[-300:]}")
@@ -63,8 +64,9 @@ def rank(results: Sequence[Dict[str, Any]], top: int = 8) -> List[Dict[str, Any]
     return ranked[:top]
 
 
-def discover(queries: Sequence[str], n: int = 10, top: int = 8, runner=subprocess.run) -> List[Dict[str, Any]]:
+def discover(queries: Sequence[str], n: int = 10, top: int = 8, runner=subprocess.run,
+             cookies: Optional[str] = None) -> List[Dict[str, Any]]:
     results: List[Dict[str, Any]] = []
     for q in queries:
-        results.extend(search(q, n, runner))
+        results.extend(search(q, n, runner, cookies))
     return rank(results, top)

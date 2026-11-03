@@ -149,7 +149,9 @@ def main(argv=None) -> None:
                                                              for i, p in t["pages"].items())}[args.provider](tok)
             print(f"{args.brand}: connected {label}")
         elif args.cmd == "discover":
-            print(json.dumps(discover.discover(args.queries, args.n, args.top), indent=2, ensure_ascii=False))
+            cookies = WORK / "secrets" / "youtube-cookies.txt"
+            found = discover.discover(args.queries, args.n, args.top, cookies=str(cookies) if cookies.is_file() else None)
+            print(json.dumps(found, indent=2, ensure_ascii=False))
         elif args.cmd == "words":
             words(args)
         elif args.cmd == "strip-music":

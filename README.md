@@ -148,6 +148,13 @@ Then, per brand: `./post connect <brand> google`, `./post connect <brand> tiktok
 
 The endpoints and fields follow each platform's public documentation. They are covered by tests against recorded request shapes, not yet by live accounts, so do your first real post per platform by hand: approve one clip, then run `./post publish-due` and watch it.
 
+### YouTube bot check
+Repeated downloads from one home IP soon get "Sign in to confirm you're not a bot". Then the producer marks the idea failed with that reason, rather than retrying and making the block longer. To get past it, export signed-in cookies once:
+```bash
+yt-dlp --cookies-from-browser chromium --cookies secrets/youtube-cookies.txt --skip-download "https://www.youtube.com/watch?v=jNQXAC9IVRw"
+```
+`./clip`, `./post discover` and the producer pick up `secrets/youtube-cookies.txt` automatically (inside the container it is `YTDLP_COOKIES=/work/secrets/youtube-cookies.txt`). Use a spare Google account's browser profile: heavy automated downloading can get the signed-in account flagged. Re-export when fetches start failing again, because the cookies expire.
+
 ### Daily use
 ```bash
 echo "- [ ] Why cold showers wake your brain up" >> brands/ojastra_mind/ideas.md

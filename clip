@@ -17,6 +17,10 @@ if ! docker image inspect "$IMAGE" >/dev/null 2>&1; then
   exit 1
 fi
 mkdir -p "$HERE"/{tmp,cache,jobs,out}
+# signed-in YouTube cookies get unattended fetches past the bot check (README, Autopilot)
+if [ -z "${YTDLP_COOKIES:-}" ] && [ -f "$HERE/secrets/youtube-cookies.txt" ]; then
+  YTDLP_COOKIES=/work/secrets/youtube-cookies.txt
+fi
 
 exec docker run --rm \
   -e TRANSCRIPTION_PROVIDER=whisper \
@@ -28,6 +32,7 @@ exec docker run --rm \
   -e HOME=/work/cache \
   -e PYTHONPATH=/work \
   ${FREESOUND_API_KEY:+-e FREESOUND_API_KEY} \
+  ${YTDLP_COOKIES:+-e YTDLP_COOKIES="$YTDLP_COOKIES"} \
   -v "$HERE":/work \
   -v "$HERE/clip.py":/app/clip.py:ro \
   -w /app \

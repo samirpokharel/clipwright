@@ -149,6 +149,29 @@ async def _transcribe(video_path: Path, url) -> str:
     return "\n".join(format_transcript_for_analysis(result))
 
 
+def _use_youtube_cookies() -> None:
+    """Send a cookies.txt with every yt-dlp request when YTDLP_COOKIES names one under /work.
+
+    Unattended runs from one home IP soon meet YouTube's "confirm you're not a bot" check;
+    signed-in cookies (export them once, see README) get past it.
+    """
+    path = os.environ.get("YTDLP_COOKIES")
+    if not path:
+        return
+    if not Path(path).is_file():
+        sys.exit(f"YTDLP_COOKIES={path} is not a file inside this folder")
+    import yt_dlp
+
+    original = yt_dlp.YoutubeDL.__init__
+
+    def init(self, params=None, *args, **kwargs):
+        params = dict(params or {})
+        params.setdefault("cookiefile", path)
+        original(self, params, *args, **kwargs)
+
+    yt_dlp.YoutubeDL.__init__ = init
+
+
 async def fetch(args) -> None:
     from src.media.transcription import load_cached_transcript_data
     from src.services.video_service import VideoService
@@ -516,6 +539,7 @@ def sounds_command(args) -> None:
 
 def main() -> None:
     args = pipeline.build_parser().parse_args()
+    _use_youtube_cookies()
     try:
         if args.cmd == "schema":
             print(pipeline.schema_text())

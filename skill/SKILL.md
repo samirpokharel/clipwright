@@ -61,7 +61,9 @@ clip on the review page first.
    idea's point. Skip motivational reupload channels, faceless AI narration, and anything under about
    10k views unless nothing else fits. Before fetching, confirm the point is in the video:
    `yt-dlp --skip-download --write-auto-subs --sub-langs en --sub-format vtt -o "jobs/_subs/%(id)s" <url>`
-   and Grep the .vtt for the idea's key words. If no source makes the point, stop and report failed.
+   (add `--cookies secrets/youtube-cookies.txt` when that file exists) and Grep the .vtt for the idea's
+   key words. If no source makes the point, stop and report failed. If YouTube answers "Sign in to
+   confirm you're not a bot", stop and report failed with that reason: retrying makes the block longer.
 2. **Fetch** the best one: `./clip fetch <url>`.
 3. **Cut exactly:** find the moment in `jobs/<id>/transcript.txt`, then get word timings with
    `./post words <id> --from <s> --to <s>`. Start on the first word of a self-contained sentence
