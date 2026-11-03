@@ -313,7 +313,7 @@ def _prepare_segments(segments, indexes, video_path, args):
     return prepared
 
 
-def _keep_range(video_path: Path, segment: Dict[str, Any]) -> tuple:
+def _keep_range(video_path: Path, segment: Dict[str, Any], max_seconds: float) -> tuple:
     """The single source range SupoClip would render for this segment (same snapping and limits)."""
     from src.video_utils import (
         clamp_keep_ranges_to_max_duration,
@@ -324,7 +324,7 @@ def _keep_range(video_path: Path, segment: Dict[str, Any]) -> tuple:
     ranges = [(layout.parse_time(segment["start_time"]), layout.parse_time(segment["end_time"]))]
     ranges = snap_keep_ranges_to_sentence_start(video_path, ranges)
     ranges = extend_keep_ranges_to_sentence_boundary(video_path, ranges)
-    ranges = clamp_keep_ranges_to_max_duration(video_path, ranges)
+    ranges = clamp_keep_ranges_to_max_duration(video_path, ranges, max_seconds)
     if len(ranges) != 1:
         raise RuntimeError(f"layout rendering needs one source range, got {len(ranges)}")
     return ranges[0]
@@ -367,7 +367,7 @@ async def _pass1(segments, indexes, video_path, args, pass1_dir: Path, cache: Di
         prepared = _prepare_segments(segments, custom, video_path, args)
         for i, seg in zip(custom, prepared):
             dest = pass1_dir / f"{i:02d}.mp4"
-            keep = _keep_range(video_path, seg)
+            keep = _keep_range(video_path, seg, args.max_seconds)
             info = render_layout.render_layout_clip(video_path, keep, styles[i - 1]["layout"], dest,
                                                     pass1_dir / "work")
             print(f"segment {i}: layout {styles[i - 1]['layout']['mode']}, runs "

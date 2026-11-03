@@ -85,7 +85,7 @@ class AssTest(unittest.TestCase):
 
     def test_handle_sits_above_the_bottom_safe_zone(self):
         ass = compose.title_ass("T", resolved(), 30.0, "Anton")
-        self.assertIn("@yourchannel", ass)
+        self.assertIn(style.load_brand(ROOT / "brand.json")["handle"], ass)
         self.assertIn("\\pos(40,1613)", ass)  # 0.84 of 1920, outside the bottom 15%
 
     def test_ass_text_is_escaped(self):
