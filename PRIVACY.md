@@ -35,8 +35,16 @@ Access can be revoked at any time at [Google Account → Security → Third-part
 ## Google's privacy policy
 Clipwright uses YouTube API Services. By using it, the operator is bound by the [YouTube Terms of Service](https://www.youtube.com/t/terms). Google's handling of data is described in the [Google Privacy Policy](https://policies.google.com/privacy).
 
-## Other platforms
-Clipwright can also publish to TikTok, Facebook and Instagram accounts that belong to the operator, through those platforms' official APIs. The same rules apply: tokens are stored locally, only the operator's own accounts are used, and no data is shared or sold.
+## TikTok
+When the operator connects a TikTok account, Clipwright uses TikTok Login Kit and the Content Posting API with these scopes:
+
+- `user.info.basic`: to identify the connected account (open ID and display name), so the operator can see which account is connected.
+- `video.publish`: to post videos the operator has approved to the operator's own TikTok profile.
+
+Before each post, Clipwright reads the account's allowed privacy levels and maximum video length (`creator_info`), then uploads the video with the caption and settings the operator chose. It stores the TikTok access and refresh tokens locally (owner-only file), and the publish ID and status of its own posts. It does not read other users' data, the account's followers, messages or analytics. Disconnect at any time in the TikTok app (Settings and privacy → Security → Manage app permissions), or by deleting the local token file (`secrets/<brand>/tiktok.json`).
+
+## Facebook and Instagram
+Clipwright can also publish Reels to Facebook Pages and Instagram professional accounts that belong to the operator, through Meta's official Graph API. The same rules apply: Page tokens are stored locally, only the operator's own Pages and accounts are used, and no data is shared or sold. Remove access at any time in Facebook Settings → Business integrations, or by deleting `secrets/<brand>/meta.json`.
 
 ## Contact
 Questions about this policy: thevoidsmr@gmail.com
