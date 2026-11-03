@@ -50,3 +50,11 @@ is enough. The recompose cache compares times and layout only, so a handle chang
 
 Mythology clip 2 needed `--max-seconds 75` and the health clips `--max-seconds 90 --exact`; a plain `clip render` cuts them at
 60 s. Open: make the renderer take the cap from the pack's `clip_seconds.max` so the flag is not needed. Not done yet.
+
+## 2026-11-03: Facebook Pages join the platform set
+
+Each domain also gets a Facebook Page with the same handle, under Shrawan's existing Meta profile, no new profile. Reason: a Reel
+posted to Instagram cross-posts to the linked Page in one step, so it costs nothing per clip. YouTube channels are Brand Accounts
+under one Google account; Instagram accounts are added under the same Meta profile; only TikTok needs a fresh account per channel,
+signed up with a Gmail alias. Facebook handle availability is not checked unauthenticated; if taken, the fallback handle applies
+to all four platforms of that domain. Runbooks RB-001 and RB-002 updated.
