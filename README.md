@@ -143,7 +143,7 @@ Official APIs only, so each platform needs an app of yours. Put the credentials 
  "tiktok": {"client_key": "...", "client_secret": "..."},
  "meta":   {"app_id": "...", "app_secret": "...", "graph_version": "v23.0", "config_id": "..."}}
 ```
-Register `http://localhost:8765/callback` as the redirect URI in each app. **Step-by-step, with the exact use cases and permissions per platform: [docs/platform-setup.md](docs/platform-setup.md).**
+Register `http://localhost:8765/callback` as the redirect URI for Google and Meta, and `http://127.0.0.1:8765/callback` for TikTok (TikTok's form rejects `localhost`). TikTok and Google also need your policy pages on a site you can verify, such as GitHub Pages, not `github.com` links. **The full walkthrough, with every error we hit during a real setup and its fix: [docs/platform-setup.md](docs/platform-setup.md).**
 
 | Platform | Create | Before the audit | Audit |
 |---|---|---|---|
